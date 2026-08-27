@@ -1,0 +1,14 @@
+services:
+  weatheredgeflow:
+    build: .
+    container_name: weatheredgeflow
+    restart: unless-stopped
+    env_file:
+      - path: .env.example
+      - path: .env
+        required: false
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
