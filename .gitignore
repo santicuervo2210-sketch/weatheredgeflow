@@ -11,7 +11,9 @@ __pycache__/
 *.db-shm
 *.db-wal
 data/*.sqlite3
+data/*.log
 logs/*.log
+reports/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/

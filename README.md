@@ -74,6 +74,17 @@ SQLite y logs persisten en:
 - `data/`
 - `logs/`
 
+## GitHub Actions PAPER Scan
+
+El repo incluye `.github/workflows/paper-scan.yml`. Sirve para correr un scan `PAPER` cada 20 minutos en servidores de GitHub y subir un artefacto con:
+
+- `reports/latest_scan.json`
+- `reports/latest_scan.md`
+- `data/weatheredgeflow-actions.sqlite3`
+- `data/weatheredgeflow-actions.log`
+
+Esto no reemplaza un VPS con dashboard 24/7, pero permite recolectar señales sin dejar la PC encendida. No ejecuta operaciones reales.
+
 ## Variables de entorno
 
 Valores seguros por defecto:
