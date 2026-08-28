@@ -35,6 +35,18 @@ Componentes principales:
 - `ResolutionEngine`: actualiza PnL PAPER cuando el venue publica resolución.
 - `CryptoCarryEngine`: monitorea carry spot/perp en Binance, pero no crea operaciones reales.
 - `CryptoBarrierEngine`: estima probabilidades de mercados Kalshi de barreras BTC y dirección XRP 15 minutos usando precio spot y volatilidad realizada de Binance.
+- `MarketRadarService`: combina señales de clima y crypto, las rankea con filtros conservadores y muestra una decisión única: `OPPORTUNITY` o `NO TRADE`.
+
+## Radar multi-mercado
+
+La primera pestaña del dashboard es `Radar`. Resume todos los motores disponibles en una sola lectura:
+
+- mejor oportunidad accionable, si existe;
+- mejor candidato bloqueado, si no supera filtros;
+- ranking cross-market de clima, crypto carry y mercados crypto de Kalshi;
+- motivo de rechazo cuando corresponde.
+
+El radar no baja los umbrales de cada estrategia y no convierte señales rechazadas en operaciones. Si el mejor candidato queda por debajo de edge, confidence, liquidez o fuente oficial, la decisión mostrada es `NO TRADE`.
 
 ## Instalación local
 

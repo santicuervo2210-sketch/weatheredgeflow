@@ -76,6 +76,43 @@ export type CryptoSignal = {
   raw?: Record<string, unknown>;
 };
 
+export type RadarItem = {
+  source: string;
+  venue: string;
+  id: number;
+  label: string;
+  instrument: string;
+  market: string;
+  action: string;
+  status: string;
+  reason_code: string;
+  reason_es: string;
+  reason_en: string;
+  model_probability?: number | null;
+  market_probability?: number | null;
+  raw_edge?: number | null;
+  net_edge?: number | null;
+  confidence?: number | null;
+  recommended_size?: number | null;
+  url?: string | null;
+  timestamp_utc?: string | null;
+  score: number;
+  actionable: boolean;
+};
+
+export type MarketRadar = {
+  generated_at_utc: string;
+  status: string;
+  mode: string;
+  summary_es: string;
+  summary_en: string;
+  best?: RadarItem | null;
+  best_watchlist?: RadarItem | null;
+  actionable_count: number;
+  candidate_count: number;
+  items: RadarItem[];
+};
+
 export type DashboardData = {
   settings: Record<string, unknown>;
   runtime: Record<string, unknown>;
@@ -107,6 +144,7 @@ export type DashboardData = {
   activity: Array<Record<string, unknown>>;
   bankroll_chart: Array<Record<string, unknown>>;
   analytics: Record<string, unknown>;
+  market_radar: MarketRadar;
 };
 
 export async function fetchDashboard(): Promise<DashboardData> {

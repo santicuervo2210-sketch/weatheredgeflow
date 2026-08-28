@@ -25,6 +25,7 @@ from app.db.models import (
 from app.db.session import session_scope
 from app.services.crypto_scanner import CryptoScannerService
 from app.services.events import log_event
+from app.services.market_radar import MarketRadarService
 from app.services.portfolio import PortfolioService
 from app.services.settings_service import SettingsService
 from app.utils.time import iso_utc
@@ -43,6 +44,7 @@ async def dashboard(request: Request) -> dict[str, Any]:
     settings_service: SettingsService = request.app.state.settings_service
     scheduler = request.app.state.scheduler
     portfolio = PortfolioService()
+    radar = MarketRadarService()
     with session_scope() as session:
         runtime = settings_service.get_runtime(session)
         settings = settings_service.get_all(session)
@@ -55,6 +57,7 @@ async def dashboard(request: Request) -> dict[str, Any]:
         snapshots = session.query(BankrollSnapshot).order_by(BankrollSnapshot.timestamp_utc.asc()).limit(500).all()
         metrics = portfolio.metrics(session, runtime)
         analytics = build_analytics(session)
+        market_radar = radar.build(session, runtime)
         return {
             "settings": settings,
             "runtime": runtime.__dict__,
@@ -68,6 +71,7 @@ async def dashboard(request: Request) -> dict[str, Any]:
             "activity": [event_dict(e) for e in events],
             "bankroll_chart": [snapshot_dict(s) for s in snapshots],
             "analytics": analytics,
+            "market_radar": market_radar,
         }
 
 

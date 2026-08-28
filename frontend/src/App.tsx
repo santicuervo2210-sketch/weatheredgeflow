@@ -12,7 +12,8 @@ import {
   ShieldAlert,
   SlidersHorizontal,
   Bitcoin,
-  Zap
+  Zap,
+  Target
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -27,11 +28,11 @@ import {
   XAxis,
   YAxis
 } from "recharts";
-import { CryptoSignal, DashboardData, Language, Signal, fetchDashboard, fetchSignal, runCryptoScan, runScan, updateControl, updateSettings } from "./api";
+import { CryptoSignal, DashboardData, Language, RadarItem, Signal, fetchDashboard, fetchSignal, runCryptoScan, runScan, updateControl, updateSettings } from "./api";
 
 const copy = {
   es: {
-    nav: ["Oportunidades", "Crypto", "Cartera", "Rendimiento", "Actividad", "Settings"],
+    nav: ["Radar", "Oportunidades", "Crypto", "Cartera", "Rendimiento", "Actividad", "Settings"],
     mode: "MODO",
     status: "STATUS",
     lastScan: "ÚLTIMO SCAN",
@@ -76,7 +77,7 @@ const copy = {
     firstRun: "Analizando mercados..."
   },
   en: {
-    nav: ["Opportunities", "Crypto", "Portfolio", "Analytics", "Activity", "Settings"],
+    nav: ["Radar", "Opportunities", "Crypto", "Portfolio", "Analytics", "Activity", "Settings"],
     mode: "MODE",
     status: "STATUS",
     lastScan: "LAST SCAN",
@@ -122,13 +123,13 @@ const copy = {
   }
 };
 
-type Page = "opportunities" | "crypto" | "portfolio" | "analytics" | "activity" | "settings";
+type Page = "radar" | "opportunities" | "crypto" | "portfolio" | "analytics" | "activity" | "settings";
 
 export default function App() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState<Page>("opportunities");
+  const [page, setPage] = useState<Page>("radar");
   const [language, setLanguage] = useState<Language>((localStorage.getItem("weatheredgeflow.language") as Language) || "es");
   const [selected, setSelected] = useState<Signal | null>(null);
   const t = copy[language];
@@ -155,12 +156,13 @@ export default function App() {
   }, []);
 
   const nav = [
-    { id: "opportunities" as Page, icon: Zap, label: t.nav[0] },
-    { id: "crypto" as Page, icon: Bitcoin, label: t.nav[1] },
-    { id: "portfolio" as Page, icon: BriefcaseBusiness, label: t.nav[2] },
-    { id: "analytics" as Page, icon: BarChart3, label: t.nav[3] },
-    { id: "activity" as Page, icon: Activity, label: t.nav[4] },
-    { id: "settings" as Page, icon: Settings, label: t.nav[5] }
+    { id: "radar" as Page, icon: Target, label: t.nav[0] },
+    { id: "opportunities" as Page, icon: Zap, label: t.nav[1] },
+    { id: "crypto" as Page, icon: Bitcoin, label: t.nav[2] },
+    { id: "portfolio" as Page, icon: BriefcaseBusiness, label: t.nav[3] },
+    { id: "analytics" as Page, icon: BarChart3, label: t.nav[4] },
+    { id: "activity" as Page, icon: Activity, label: t.nav[5] },
+    { id: "settings" as Page, icon: Settings, label: t.nav[6] }
   ];
 
   if (loading && !data) {
@@ -231,6 +233,7 @@ export default function App() {
         {data && <Kpis data={data} t={t} />}
 
         <section className="content">
+          {data && page === "radar" && <MarketRadarPanel data={data} language={language} load={load} />}
           {data && page === "opportunities" && <Opportunities data={data} t={t} language={language} onSelect={async (signal) => setSelected(await fetchSignal(signal.id))} />}
           {data && page === "crypto" && <CryptoPanel data={data} language={language} load={load} />}
           {data && page === "portfolio" && <Portfolio data={data} t={t} />}
@@ -242,6 +245,102 @@ export default function App() {
 
       {selected && <SignalDetail signal={selected} t={t} language={language} onClose={() => setSelected(null)} />}
     </div>
+  );
+}
+
+function MarketRadarPanel({ data, language, load }: { data: DashboardData; language: Language; load: () => Promise<void> }) {
+  const radar = data.market_radar;
+  const best = radar.best || radar.best_watchlist;
+  return (
+    <div className="radar-layout">
+      <div className={radar.status === "OPPORTUNITY" ? "radar-hero opportunity" : "radar-hero no-trade"}>
+        <div>
+          <span className="eyebrow">MULTI-MARKET RADAR</span>
+          <h2>{radar.status === "OPPORTUNITY" ? "OPPORTUNITY" : "NO TRADE"}</h2>
+          <p>{language === "es" ? radar.summary_es : radar.summary_en}</p>
+        </div>
+        <div className="radar-actions">
+          <button className="primary" onClick={async () => { await Promise.all([runScan(), runCryptoScan()]); await load(); }}>
+            <RefreshCw size={18} />
+            <span>{language === "es" ? "Escanear todo" : "Scan all"}</span>
+          </button>
+          {best?.url && (
+            <a className="poly-link" href={best.url} target="_blank" rel="noreferrer">
+              <ExternalLink size={18} />
+              <span>{language === "es" ? "Abrir mercado" : "Open market"}</span>
+            </a>
+          )}
+        </div>
+      </div>
+
+      {best && (
+        <div className="panel radar-best">
+          <h2>{language === "es" ? "Mejor lectura ahora" : "Best read now"}</h2>
+          <div className="detail-grid">
+            <Info label="Source" value={`${best.source.toUpperCase()} / ${best.venue}`} />
+            <Info label="Instrument" value={best.instrument} />
+            <Info label="Action" value={best.action} />
+            <Info label="Status" value={best.status} />
+            <Info label="Model prob." value={pct(best.model_probability)} />
+            <Info label="Market prob." value={pct(best.market_probability)} />
+            <Info label="Net edge" value={pct(best.net_edge)} />
+            <Info label="Confidence" value={score(best.confidence)} />
+            <Info label="Size" value={usd(best.recommended_size)} />
+            <Info label="Score" value={best.score.toFixed(2)} />
+            <Info label="Reason" value={language === "es" ? best.reason_es : best.reason_en} wide />
+            <Info label="Market" value={best.market} wide />
+          </div>
+        </div>
+      )}
+
+      <div className="panel">
+        <div className="panel-head">
+          <h2>{language === "es" ? "Ranking cross-market" : "Cross-market ranking"}</h2>
+          <span className="muted">{radar.actionable_count}/{radar.candidate_count}</span>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Venue</th>
+                <th>Market</th>
+                <th>Action</th>
+                <th>Status</th>
+                <th>Model</th>
+                <th>Market</th>
+                <th>Net edge</th>
+                <th>Confidence</th>
+                <th>Size</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {radar.items.length === 0 && <EmptyRow colSpan={11} text="-" />}
+              {radar.items.map((item) => <RadarRow key={`${item.source}-${item.id}`} item={item} language={language} />)}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RadarRow({ item, language }: { item: RadarItem; language: Language }) {
+  return (
+    <tr className={rowTone(item.status)}>
+      <td>{item.source}</td>
+      <td>{item.venue}</td>
+      <td className="market-cell">{item.url ? <a href={item.url} target="_blank" rel="noreferrer">{item.market}</a> : item.market}</td>
+      <td>{item.action}</td>
+      <td><span className="badge">{item.status}</span></td>
+      <td>{pct(item.model_probability)}</td>
+      <td>{pct(item.market_probability)}</td>
+      <td>{pct(item.net_edge)}</td>
+      <td>{score(item.confidence)}</td>
+      <td>{usd(item.recommended_size)}</td>
+      <td className="market-cell">{language === "es" ? item.reason_es : item.reason_en}</td>
+    </tr>
   );
 }
 
@@ -390,7 +489,7 @@ function Portfolio({ data, t }: { data: DashboardData; t: typeof copy.es }) {
   return (
     <div className="grid-two">
       <div className="panel">
-        <h2>{t.nav[2]}</h2>
+        <h2>{t.nav[3]}</h2>
         <div className="metric-list">
           {statRows.map(([label, value]) => (
             <div key={label}><span>{label}</span><strong>{value}</strong></div>
@@ -456,7 +555,7 @@ function Analytics({ data, t }: { data: DashboardData; t: typeof copy.es }) {
   return (
     <div className="grid-two">
       <div className="panel">
-        <h2>{t.nav[3]}</h2>
+        <h2>{t.nav[4]}</h2>
         <div className="metric-list">
           {cards.map(([label, value]) => <div key={String(label)}><span>{label}</span><strong>{String(value)}</strong></div>)}
         </div>
@@ -488,7 +587,7 @@ function BarPanel({ title, data, x, y }: { title: string; data: Array<Record<str
 function ActivityLog({ data, language, t }: { data: DashboardData; language: Language; t: typeof copy.es }) {
   return (
     <div className="panel log">
-      <h2>{t.nav[4]}</h2>
+      <h2>{t.nav[5]}</h2>
       {data.activity.length === 0 && <p>{t.noRows}</p>}
       {data.activity.map((event) => (
         <div className={`log-row ${String(event.level).toLowerCase()}`} key={String(event.id)}>
@@ -527,7 +626,7 @@ function SettingsPage({ data, t, load }: { data: DashboardData; t: typeof copy.e
   ] as const;
   return (
     <div className="panel settings-panel">
-      <h2><SlidersHorizontal size={18} /> {t.nav[5]}</h2>
+      <h2><SlidersHorizontal size={18} /> {t.nav[6]}</h2>
       <div className="settings-grid">
         <label className="checkbox-field">
           <span>Email alerts</span>
