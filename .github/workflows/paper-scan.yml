@@ -25,6 +25,18 @@ jobs:
       LOG_LEVEL: INFO
       VENUE: KALSHI
       MODE: PAPER
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: "587"
+      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+      SMTP_FROM_EMAIL: ${{ secrets.SMTP_FROM_EMAIL }}
+      SMTP_USE_TLS: "true"
+      ALERT_EMAIL_ENABLED: "true"
+      ALERT_EMAIL_RECIPIENT: santicuervo2210@gmail.com
+      ALERT_MIN_CONFIDENCE: "70"
+      ALERT_MIN_NET_EDGE: "0.10"
+      ALERT_MIN_MODEL_PROBABILITY: "0.60"
+      ALERT_MIN_PROFIT_USD_PER_1: "0.40"
       INITIAL_BANKROLL_USD: "10.00"
       PAPER_BANKROLL_USD: "10.00"
       MAX_POSITION_PERCENT: "10"
