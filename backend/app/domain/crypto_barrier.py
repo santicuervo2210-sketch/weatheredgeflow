@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from statistics import pstdev
 from typing import Any
 
@@ -15,9 +15,12 @@ class KalshiCryptoMarket:
     ticker: str
     event_ticker: str
     title: str
+    symbol: str
+    market_type: str
     direction: str
-    strike: float
+    strike: float | None
     close_time_utc: datetime
+    start_time_utc: datetime | None
     yes_bid: float | None
     yes_ask: float | None
     no_bid: float | None
@@ -41,12 +44,12 @@ class CryptoBarrierDecision:
     confidence: float
     realized_vol: float
     spot_price: float
-    strike: float
+    strike: float | None
     days_to_expiry: float
 
 
 class CryptoBarrierEngine:
-    strategy = "KALSHI_BTC_BARRIER"
+    strategy = "KALSHI_CRYPTO_PRICE"
 
     def evaluate(
         self,
@@ -60,35 +63,43 @@ class CryptoBarrierEngine:
     ) -> CryptoBarrierDecision:
         realized_vol = annualized_realized_vol(hourly_closes)
         days = max(0.0, (market.close_time_utc - utc_now()).total_seconds() / 86400.0)
-        probability = barrier_touch_probability(
-            spot_price=spot_price,
-            barrier=market.strike,
-            annualized_vol=realized_vol,
-            years=days / 365.0,
-            direction=market.direction,
-        )
-        confidence = max(20.0, min(72.0, 64.0 - abs(probability - 0.5) * 18.0))
-        ask = market.yes_ask
-        bid = market.yes_bid
-        spread = None if ask is None or bid is None else max(0.0, ask - bid)
-        if ask is None or bid is None or ask <= 0 or ask >= 1 or spread is None:
+        if market.market_type == "directional":
+            probability = short_direction_probability(
+                spot_price=spot_price,
+                minute_closes=hourly_closes,
+                close_time_utc=market.close_time_utc,
+                start_time_utc=market.start_time_utc,
+            )
+            confidence = max(18.0, min(58.0, 48.0 - abs(probability - 0.5) * 10.0))
+        else:
+            if market.strike is None:
+                return self._reject(market, "MISSING_STRIKE", "El mercado no tiene strike numérico interpretable.", "The market has no parseable numeric strike.", 0.0, None, None, None, 0.0, realized_vol, spot_price, days)
+            probability = barrier_touch_probability(
+                spot_price=spot_price,
+                barrier=market.strike,
+                annualized_vol=realized_vol,
+                years=days / 365.0,
+                direction=market.direction,
+            )
+            confidence = max(20.0, min(72.0, 64.0 - abs(probability - 0.5) * 18.0))
+        side, executable, side_bid, side_spread, raw_edge = best_side(probability, market)
+        if executable is None or side_bid is None or executable <= 0 or executable >= 1 or side_spread is None:
             return self._reject(market, "NO_MARKET_PRICE", "Precio Kalshi no ejecutable.", "Kalshi executable price is unavailable.", probability, None, None, None, confidence, realized_vol, spot_price, days)
-        if spread > max_spread:
-            return self._reject(market, "SPREAD_TOO_WIDE", "Spread demasiado amplio para una predicción crypto conservadora.", "Spread is too wide for a conservative crypto prediction.", probability, ask, probability - ask, None, confidence, realized_vol, spot_price, days)
-        raw_edge = probability - ask
-        net_edge = raw_edge - spread / 2.0 - safety_margin
+        if side_spread > max_spread:
+            return self._reject(market, "SPREAD_TOO_WIDE", "Spread demasiado amplio para una predicción crypto conservadora.", "Spread is too wide for a conservative crypto prediction.", probability, executable, raw_edge, None, confidence, realized_vol, spot_price, days)
+        net_edge = raw_edge - side_spread / 2.0 - safety_margin
         if net_edge < min_net_edge:
-            return self._reject(market, "EDGE_BELOW_THRESHOLD", "Edge neto insuficiente después de spread y margen de seguridad.", "Net edge is too small after spread and safety margin.", probability, ask, raw_edge, net_edge, confidence, realized_vol, spot_price, days)
+            return self._reject(market, "EDGE_BELOW_THRESHOLD", "Edge neto insuficiente después de spread y margen de seguridad.", "Net edge is too small after spread and safety margin.", probability, executable, raw_edge, net_edge, confidence, realized_vol, spot_price, days)
         return CryptoBarrierDecision(
-            symbol="BTCUSDT",
+            symbol=market.symbol,
             ticker=market.ticker,
-            action="BUY_YES",
+            action=side,
             status="OPPORTUNITY",
-            reason_code="BARRIER_EDGE_OK",
-            reason_es="Modelo de barrera detecta probabilidad superior al precio de Kalshi después de spread y margen.",
-            reason_en="Barrier model detects probability above Kalshi price after spread and safety margin.",
+            reason_code="CRYPTO_EDGE_OK",
+            reason_es="Modelo crypto detecta probabilidad superior al precio de Kalshi después de spread y margen.",
+            reason_en="Crypto model detects probability above Kalshi price after spread and safety margin.",
             model_probability=probability,
-            market_probability=ask,
+            market_probability=executable,
             raw_edge=raw_edge,
             net_edge=net_edge,
             confidence=confidence,
@@ -112,9 +123,9 @@ class CryptoBarrierEngine:
         realized_vol: float,
         spot_price: float,
         days: float,
-    ) -> CryptoBarrierDecision:
+        ) -> CryptoBarrierDecision:
         return CryptoBarrierDecision(
-            symbol="BTCUSDT",
+            symbol=market.symbol,
             ticker=market.ticker,
             action="NO_TRADE",
             status="REJECTED",
@@ -134,27 +145,56 @@ class CryptoBarrierEngine:
 
 
 def parse_kalshi_btc_market(raw: dict[str, Any]) -> KalshiCryptoMarket | None:
+    return parse_kalshi_crypto_market(raw)
+
+
+def parse_kalshi_crypto_market(raw: dict[str, Any]) -> KalshiCryptoMarket | None:
     title = str(raw.get("title") or "")
-    if "Bitcoin" not in title:
-        return None
-    direction = "above" if " above " in f" {title} ".lower() else "below" if " below " in f" {title} ".lower() else None
-    if direction is None:
-        return None
-    match = re.search(r"\$([0-9,]+(?:\.[0-9]+)?)", title)
-    if not match:
+    lowered = f" {title} ".lower()
+    symbol = _symbol_from_title(title)
+    if symbol is None:
         return None
     close_time = parse_datetime(str(raw.get("close_time") or raw.get("expected_expiration_time") or ""))
     if close_time is None:
         return None
     if close_time.tzinfo is None:
         close_time = close_time.replace(tzinfo=UTC)
+    close_time = close_time.astimezone(UTC)
+    if close_time <= utc_now():
+        return None
+    if " price up in next 15 mins" in lowered:
+        return KalshiCryptoMarket(
+            ticker=str(raw.get("ticker") or ""),
+            event_ticker=str(raw.get("event_ticker") or ""),
+            title=title,
+            symbol=symbol,
+            market_type="directional",
+            direction="up",
+            strike=None,
+            close_time_utc=close_time,
+            start_time_utc=close_time - timedelta(minutes=15),
+            yes_bid=_float_or_none(raw.get("yes_bid_dollars")),
+            yes_ask=_float_or_none(raw.get("yes_ask_dollars")),
+            no_bid=_float_or_none(raw.get("no_bid_dollars")),
+            no_ask=_float_or_none(raw.get("no_ask_dollars")),
+            raw=raw,
+        )
+    direction = "above" if " above " in lowered else "below" if " below " in lowered else None
+    if direction is None:
+        return None
+    match = re.search(r"\$([0-9,]+(?:\.[0-9]+)?)", title)
+    if not match:
+        return None
     return KalshiCryptoMarket(
         ticker=str(raw.get("ticker") or ""),
         event_ticker=str(raw.get("event_ticker") or ""),
         title=title,
+        symbol=symbol,
+        market_type="barrier",
         direction=direction,
         strike=float(match.group(1).replace(",", "")),
-        close_time_utc=close_time.astimezone(UTC),
+        close_time_utc=close_time,
+        start_time_utc=None,
         yes_bid=_float_or_none(raw.get("yes_bid_dollars")),
         yes_ask=_float_or_none(raw.get("yes_ask_dollars")),
         no_bid=_float_or_none(raw.get("no_bid_dollars")),
@@ -168,6 +208,42 @@ def annualized_realized_vol(closes: list[float]) -> float:
     if len(returns) < 24:
         raise ValueError("Not enough returns for volatility")
     return max(0.01, pstdev(returns) * math.sqrt(24 * 365))
+
+
+def short_direction_probability(
+    *,
+    spot_price: float,
+    minute_closes: list[float],
+    close_time_utc: datetime,
+    start_time_utc: datetime | None,
+) -> float:
+    now = utc_now()
+    if spot_price <= 0 or len(minute_closes) < 30 or close_time_utc <= now:
+        return 0.0
+    if start_time_utc is None or now < start_time_utc:
+        start_price = minute_closes[-1]
+    else:
+        index_from_end = min(len(minute_closes), int((now - start_time_utc).total_seconds() // 60) + 1)
+        start_price = minute_closes[-index_from_end]
+    returns = [math.log(minute_closes[index] / minute_closes[index - 1]) for index in range(1, len(minute_closes)) if minute_closes[index] > 0 and minute_closes[index - 1] > 0]
+    if len(returns) < 30:
+        raise ValueError("Not enough minute returns")
+    sigma = max(0.0001, pstdev(returns))
+    minutes_left = max(1.0, (close_time_utc - now).total_seconds() / 60.0)
+    sigma_t = sigma * math.sqrt(minutes_left)
+    distance = math.log(spot_price / start_price)
+    return max(0.0, min(1.0, _normal_cdf(distance / sigma_t)))
+
+
+def best_side(probability_yes: float, market: KalshiCryptoMarket) -> tuple[str, float | None, float | None, float | None, float]:
+    yes_spread = None if market.yes_ask is None or market.yes_bid is None else max(0.0, market.yes_ask - market.yes_bid)
+    no_spread = None if market.no_ask is None or market.no_bid is None else max(0.0, market.no_ask - market.no_bid)
+    yes_edge = -math.inf if market.yes_ask is None else probability_yes - market.yes_ask
+    no_probability = 1.0 - probability_yes
+    no_edge = -math.inf if market.no_ask is None else no_probability - market.no_ask
+    if no_edge > yes_edge:
+        return "BUY_NO", market.no_ask, market.no_bid, no_spread, no_edge
+    return "BUY_YES", market.yes_ask, market.yes_bid, yes_spread, yes_edge
 
 
 def barrier_touch_probability(
@@ -196,6 +272,19 @@ def barrier_touch_probability(
 
 def _normal_cdf(value: float) -> float:
     return 0.5 * (1.0 + math.erf(value / math.sqrt(2.0)))
+
+
+def _symbol_from_title(title: str) -> str | None:
+    lowered = title.lower()
+    if "bitcoin cash" in lowered:
+        return "BCHUSDT"
+    if "bitcoin" in lowered:
+        return "BTCUSDT"
+    if "xrp" in lowered:
+        return "XRPUSDT"
+    if "litecoin" in lowered:
+        return "LTCUSDT"
+    return None
 
 
 def _float_or_none(value: Any) -> float | None:

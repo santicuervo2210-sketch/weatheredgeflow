@@ -9,7 +9,7 @@ from app.clients.kalshi import KalshiClient
 from app.config import AppSettings
 from app.db.models import CryptoSignal, CryptoSnapshot
 from app.db.session import session_scope
-from app.domain.crypto_barrier import CryptoBarrierEngine, parse_kalshi_btc_market
+from app.domain.crypto_barrier import KalshiCryptoMarket, CryptoBarrierEngine, parse_kalshi_crypto_market
 from app.domain.crypto_carry import CryptoCarryEngine, CryptoCarryLimits
 from app.services.events import log_event
 from app.services.settings_service import SettingsService
@@ -89,24 +89,33 @@ class CryptoScannerService:
 
     async def _scan_kalshi_btc_barriers(self, client: BinancePublicClient, kalshi: KalshiClient) -> dict[str, int]:
         series = [item.strip().upper() for item in self.app_settings.kalshi_crypto_series_tickers.split(",") if item.strip()]
-        markets = await kalshi.get_markets_by_series(series, limit_per_series=20)
-        btc_snapshot = await client.get_snapshot("BTCUSDT")
-        klines = await client.get_klines("BTCUSDT", limit=max(48, self.app_settings.crypto_barrier_vol_window_days * 24))
-        closes = [row["close"] for row in klines]
+        raw_markets = await kalshi.get_markets_by_series(series, limit_per_series=20)
+        markets = [market for market in (parse_kalshi_crypto_market(raw) for raw in raw_markets) if market is not None]
+        symbols = sorted({market.symbol for market in markets})
+        spot_prices: dict[str, float] = {}
+        history: dict[tuple[str, str], list[float]] = {}
+        for symbol in symbols:
+            snapshot = await client.get_snapshot(symbol)
+            spot_prices[symbol] = snapshot.spot_mid
+            hourly_klines = await client.get_klines(symbol, interval="1h", limit=max(48, self.app_settings.crypto_barrier_vol_window_days * 24))
+            history[(symbol, "barrier")] = [row["close"] for row in hourly_klines]
+            minute_klines = await client.get_klines(symbol, interval="1m", limit=max(60, self.app_settings.crypto_short_interval_minutes * 12))
+            history[(symbol, "directional")] = [row["close"] for row in minute_klines]
         scanned = 0
         opportunities = 0
         errors = 0
-        for raw in markets:
-            parsed = parse_kalshi_btc_market(raw)
-            if parsed is None:
-                continue
+        for parsed in markets:
             scanned += 1
             try:
-                created = self._save_barrier_decision(parsed, spot_price=btc_snapshot.spot_mid, hourly_closes=closes)
+                created = self._save_barrier_decision(
+                    parsed,
+                    spot_price=spot_prices[parsed.symbol],
+                    closes=history[(parsed.symbol, parsed.market_type)],
+                )
                 opportunities += 1 if created else 0
             except Exception as exc:  # noqa: BLE001
                 errors += 1
-                logger.info("btc barrier market skipped %s: %s", raw.get("ticker"), exc)
+                logger.info("crypto prediction market skipped %s: %s", parsed.ticker, exc)
         return {"markets": scanned, "opportunities": opportunities, "errors": errors}
 
     def _save_decision(self, snapshot: BinanceMarketSnapshot) -> bool:
@@ -180,14 +189,17 @@ class CryptoScannerService:
             )
             return decision.status == "OPPORTUNITY"
 
-    def _save_barrier_decision(self, market: Any, *, spot_price: float, hourly_closes: list[float]) -> bool:
+    def _save_barrier_decision(self, market: KalshiCryptoMarket, *, spot_price: float, closes: list[float]) -> bool:
+        min_edge = self.app_settings.crypto_short_min_net_edge if market.market_type == "directional" else self.app_settings.crypto_barrier_min_net_edge
+        safety_margin = self.app_settings.crypto_short_safety_margin if market.market_type == "directional" else self.app_settings.crypto_barrier_safety_margin
+        max_spread = self.app_settings.crypto_short_max_spread if market.market_type == "directional" else self.app_settings.crypto_barrier_max_spread
         decision = self.barrier_engine.evaluate(
             market,
             spot_price=spot_price,
-            hourly_closes=hourly_closes,
-            min_net_edge=self.app_settings.crypto_barrier_min_net_edge,
-            safety_margin=self.app_settings.crypto_barrier_safety_margin,
-            max_spread=self.app_settings.crypto_barrier_max_spread,
+            hourly_closes=closes,
+            min_net_edge=min_edge,
+            safety_margin=safety_margin,
+            max_spread=max_spread,
         )
         with session_scope() as session:
             session.add(

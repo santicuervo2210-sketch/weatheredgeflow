@@ -2,7 +2,7 @@
 
 WeatherEdgeflow analiza mercados meteorológicos abiertos de venues tipo prediction market. Por defecto usa Kalshi (`VENUE=KALSHI`) porque expone market data pública y mercados meteorológicos accesibles desde API oficial. También conserva soporte opcional de Polymarket (`VENUE=POLYMARKET`) para entornos donde sea legal y accesible.
 
-La aplicación compara precios ejecutables del orderbook contra pronósticos públicos, estima probabilidades mediante un motor determinístico y registra señales, descartes y operaciones PAPER en SQLite. Además incluye un módulo auxiliar `Crypto` que analiza carry spot/perp de Binance y barreras de BTC en Kalshi con datos públicos.
+La aplicación compara precios ejecutables del orderbook contra pronósticos públicos, estima probabilidades mediante un motor determinístico y registra señales, descartes y operaciones PAPER en SQLite. Además incluye un módulo auxiliar `Crypto` que analiza carry spot/perp de Binance, barreras BTC en Kalshi y mercados direccionales cortos de XRP con datos públicos.
 
 La aplicación tiene tres modos:
 
@@ -34,7 +34,7 @@ Componentes principales:
 - `PaperExecutionEngine`: simula fills sólo contra liquidez disponible.
 - `ResolutionEngine`: actualiza PnL PAPER cuando el venue publica resolución.
 - `CryptoCarryEngine`: monitorea carry spot/perp en Binance, pero no crea operaciones reales.
-- `CryptoBarrierEngine`: estima probabilidades de mercados Kalshi de barreras BTC usando precio spot y volatilidad realizada de Binance.
+- `CryptoBarrierEngine`: estima probabilidades de mercados Kalshi de barreras BTC y dirección XRP 15 minutos usando precio spot y volatilidad realizada de Binance.
 
 ## Instalación local
 
@@ -109,9 +109,12 @@ KALSHI_SERIES_TICKERS=KXHIGHNY,KXHIGHCHI,KXHIGHMIA,KXHIGHLAX,KXHIGHDEN
 BINANCE_SPOT_BASE_URL=https://api.binance.com
 BINANCE_FUTURES_BASE_URL=https://fapi.binance.com
 CRYPTO_SYMBOLS=BTCUSDT,ETHUSDT,SOLUSDT
-KALSHI_CRYPTO_SERIES_TICKERS=KXBTCMAXY,KXBTCMINY
+KALSHI_CRYPTO_SERIES_TICKERS=KXBTCMAXY,KXBTCMINY,KXXRP15M
 CRYPTO_BARRIER_MIN_NET_EDGE=0.15
 CRYPTO_BARRIER_SAFETY_MARGIN=0.08
+CRYPTO_SHORT_SCAN_INTERVAL_MINUTES=5
+CRYPTO_SHORT_MIN_NET_EDGE=0.18
+CRYPTO_SHORT_SAFETY_MARGIN=0.10
 ```
 
 No se requieren credenciales privadas. No configures seed phrases ni private keys: la aplicación no las usa.
@@ -151,7 +154,7 @@ La cabecera muestra:
 Páginas:
 
 - `Oportunidades`: tabla principal y detalle completo por señal.
-- `Crypto`: señales auxiliares de carry Binance y barreras BTC Kalshi.
+- `Crypto`: señales auxiliares de carry Binance, barreras BTC Kalshi y XRP 15 minutos.
 - `Cartera`: bankroll, cash, exposición, PnL, posiciones e historial.
 - `Rendimiento`: señales, trades, edge promedio, calibración y buckets.
 - `Actividad`: log humano de cada ciclo.

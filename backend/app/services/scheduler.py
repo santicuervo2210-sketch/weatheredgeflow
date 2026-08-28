@@ -36,7 +36,7 @@ class ScannerScheduler:
         if self.crypto_scanner is not None:
             self.scheduler.add_job(
                 self.crypto_scanner.run_once,
-                trigger=IntervalTrigger(minutes=interval),
+                trigger=IntervalTrigger(minutes=self._crypto_interval()),
                 id="weatheredgeflow-crypto-scan",
                 replace_existing=True,
                 max_instances=1,
@@ -54,7 +54,7 @@ class ScannerScheduler:
         interval = self._interval()
         self.scheduler.reschedule_job("weatheredgeflow-scan", trigger=IntervalTrigger(minutes=interval))
         if self.scheduler.get_job("weatheredgeflow-crypto-scan"):
-            self.scheduler.reschedule_job("weatheredgeflow-crypto-scan", trigger=IntervalTrigger(minutes=interval))
+            self.scheduler.reschedule_job("weatheredgeflow-crypto-scan", trigger=IntervalTrigger(minutes=self._crypto_interval()))
 
     def status(self) -> dict[str, object]:
         job = self.scheduler.get_job("weatheredgeflow-scan") if self.scheduler.running else None
@@ -70,3 +70,6 @@ class ScannerScheduler:
         with session_scope() as session:
             runtime = self.settings_service.get_runtime(session)
             return max(1, runtime.scan_interval_minutes)
+
+    def _crypto_interval(self) -> int:
+        return max(1, self.crypto_scanner.app_settings.crypto_short_scan_interval_minutes if self.crypto_scanner else self._interval())
