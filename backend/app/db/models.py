@@ -210,6 +210,22 @@ class CryptoSignal(Base):
     raw_json: Mapped[str] = mapped_column(Text)
 
 
+class NotificationEvent(Base):
+    __tablename__ = "notification_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dedupe_key: Mapped[str] = mapped_column(String(256), unique=True, index=True)
+    signal_type: Mapped[str] = mapped_column(String(32))
+    signal_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    recipient: Mapped[str] = mapped_column(String(320))
+    channel: Mapped[str] = mapped_column(String(32), default="EMAIL")
+    subject: Mapped[str] = mapped_column(String(512))
+    status: Mapped[str] = mapped_column(String(32), default="PENDING")
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+    sent_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class PaperOrder(Base):
     __tablename__ = "paper_orders"
 

@@ -46,6 +46,7 @@ from app.domain.types import (
     ParsedWeatherMarket,
 )
 from app.services.events import log_event
+from app.services.notifications import NotificationService
 from app.services.portfolio import PortfolioService
 from app.services.settings_service import RuntimeSettings, SettingsService
 from app.utils.time import parse_datetime, utc_now
@@ -67,6 +68,7 @@ class ScannerService:
         self.paper_engine = PaperExecutionEngine()
         self.resolution_engine = ResolutionEngine()
         self.portfolio = PortfolioService()
+        self.notifications = NotificationService(app_settings)
         self._lock = asyncio.Lock()
         self.last_scan_started_at = None
         self.last_scan_finished_at = None
@@ -538,6 +540,7 @@ class ScannerService:
                 bundle=bundle,
                 observation=observation,
             )
+            self.notifications.maybe_notify_weather_signal(session, signal, runtime)
             if actionable and runtime.mode == "PAPER" and fee_schedule is not None:
                 fill = self.paper_engine.simulate_buy(
                     orderbook=orderbook,

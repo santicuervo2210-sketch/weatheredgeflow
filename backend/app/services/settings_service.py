@@ -41,6 +41,12 @@ class RuntimeSettings:
     max_spread: float
     preferred_horizon_hours: int
     user_timezone: str
+    alert_email_enabled: bool
+    alert_email_recipient: str
+    alert_min_confidence: float
+    alert_min_net_edge: float
+    alert_min_model_probability: float
+    alert_min_profit_usd_per_1: float
     paused: bool
     kill_switch: bool
 
@@ -71,6 +77,12 @@ class SettingsService:
             "max_spread": self.app_settings.max_spread,
             "preferred_horizon_hours": self.app_settings.preferred_horizon_hours,
             "user_timezone": self.app_settings.user_timezone,
+            "alert_email_enabled": self.app_settings.alert_email_enabled,
+            "alert_email_recipient": self.app_settings.alert_email_recipient,
+            "alert_min_confidence": self.app_settings.alert_min_confidence,
+            "alert_min_net_edge": self.app_settings.alert_min_net_edge,
+            "alert_min_model_probability": self.app_settings.alert_min_model_probability,
+            "alert_min_profit_usd_per_1": self.app_settings.alert_min_profit_usd_per_1,
             "paused": False,
             "kill_switch": False,
         }
@@ -108,6 +120,12 @@ class SettingsService:
             max_spread=float(values["max_spread"]),
             preferred_horizon_hours=int(values["preferred_horizon_hours"]),
             user_timezone=str(values["user_timezone"]),
+            alert_email_enabled=bool(values["alert_email_enabled"]),
+            alert_email_recipient=str(values["alert_email_recipient"]),
+            alert_min_confidence=float(values["alert_min_confidence"]),
+            alert_min_net_edge=float(values["alert_min_net_edge"]),
+            alert_min_model_probability=float(values["alert_min_model_probability"]),
+            alert_min_profit_usd_per_1=float(values["alert_min_profit_usd_per_1"]),
             paused=bool(values["paused"]),
             kill_switch=bool(values["kill_switch"]),
         )

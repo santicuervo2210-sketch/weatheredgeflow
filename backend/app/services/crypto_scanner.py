@@ -12,6 +12,7 @@ from app.db.session import session_scope
 from app.domain.crypto_barrier import KalshiCryptoMarket, CryptoBarrierEngine, parse_kalshi_crypto_market
 from app.domain.crypto_carry import CryptoCarryEngine, CryptoCarryLimits
 from app.services.events import log_event
+from app.services.notifications import NotificationService
 from app.services.settings_service import SettingsService
 from app.utils.time import utc_now
 
@@ -25,6 +26,7 @@ class CryptoScannerService:
         self.settings_service = settings_service
         self.engine = CryptoCarryEngine()
         self.barrier_engine = CryptoBarrierEngine()
+        self.notifications = NotificationService(app_settings)
 
     async def run_once(self) -> dict[str, Any]:
         client = BinancePublicClient(self.app_settings)
@@ -153,33 +155,34 @@ class CryptoScannerService:
             )
             session.add(snapshot_row)
             session.flush()
-            session.add(
-                CryptoSignal(
-                    timestamp_utc=utc_now(),
-                    snapshot_id=snapshot_row.id,
-                    venue="BINANCE",
-                    symbol=snapshot.symbol,
-                    strategy=self.engine.strategy,
-                    action=decision.action,
-                    status=decision.status,
-                    reason_code=decision.reason_code,
-                    reason_es=decision.reason_es,
-                    reason_en=decision.reason_en,
-                    funding_rate=decision.funding_rate,
-                    model_probability=None,
-                    market_probability=None,
-                    raw_edge=None,
-                    daily_funding_estimate=decision.daily_funding_estimate,
-                    annualized_funding_estimate=decision.annualized_funding_estimate,
-                    estimated_costs=decision.estimated_costs,
-                    basis_risk=decision.basis_risk,
-                    net_daily_edge=decision.net_daily_edge,
-                    confidence=decision.confidence,
-                    recommended_notional=decision.recommended_notional,
-                    max_notional=decision.max_notional,
-                    raw_json=json.dumps({"snapshot": snapshot.raw, "decision": decision.__dict__}, default=str),
-                )
+            signal = CryptoSignal(
+                timestamp_utc=utc_now(),
+                snapshot_id=snapshot_row.id,
+                venue="BINANCE",
+                symbol=snapshot.symbol,
+                strategy=self.engine.strategy,
+                action=decision.action,
+                status=decision.status,
+                reason_code=decision.reason_code,
+                reason_es=decision.reason_es,
+                reason_en=decision.reason_en,
+                funding_rate=decision.funding_rate,
+                model_probability=None,
+                market_probability=None,
+                raw_edge=None,
+                daily_funding_estimate=decision.daily_funding_estimate,
+                annualized_funding_estimate=decision.annualized_funding_estimate,
+                estimated_costs=decision.estimated_costs,
+                basis_risk=decision.basis_risk,
+                net_daily_edge=decision.net_daily_edge,
+                confidence=decision.confidence,
+                recommended_notional=decision.recommended_notional,
+                max_notional=decision.max_notional,
+                raw_json=json.dumps({"snapshot": snapshot.raw, "decision": decision.__dict__}, default=str),
             )
+            session.add(signal)
+            session.flush()
+            self.notifications.maybe_notify_crypto_signal(session, signal, runtime)
             log_event(
                 session,
                 message_es=f"Crypto {snapshot.symbol}: {decision.action} ({decision.reason_code})",
@@ -202,33 +205,35 @@ class CryptoScannerService:
             max_spread=max_spread,
         )
         with session_scope() as session:
-            session.add(
-                CryptoSignal(
-                    timestamp_utc=utc_now(),
-                    snapshot_id=None,
-                    venue="KALSHI",
-                    symbol=decision.symbol,
-                    strategy=self.barrier_engine.strategy,
-                    action=decision.action,
-                    status=decision.status,
-                    reason_code=decision.reason_code,
-                    reason_es=decision.reason_es,
-                    reason_en=decision.reason_en,
-                    funding_rate=None,
-                    model_probability=decision.model_probability,
-                    market_probability=decision.market_probability,
-                    raw_edge=decision.raw_edge,
-                    daily_funding_estimate=None,
-                    annualized_funding_estimate=None,
-                    estimated_costs=None,
-                    basis_risk=None,
-                    net_daily_edge=decision.net_edge,
-                    confidence=decision.confidence,
-                    recommended_notional=0.0,
-                    max_notional=0.0,
-                    raw_json=json.dumps({"market": market.raw, "decision": decision.__dict__}, default=str),
-                )
+            runtime = self.settings_service.get_runtime(session)
+            signal = CryptoSignal(
+                timestamp_utc=utc_now(),
+                snapshot_id=None,
+                venue="KALSHI",
+                symbol=decision.symbol,
+                strategy=self.barrier_engine.strategy,
+                action=decision.action,
+                status=decision.status,
+                reason_code=decision.reason_code,
+                reason_es=decision.reason_es,
+                reason_en=decision.reason_en,
+                funding_rate=None,
+                model_probability=decision.model_probability,
+                market_probability=decision.market_probability,
+                raw_edge=decision.raw_edge,
+                daily_funding_estimate=None,
+                annualized_funding_estimate=None,
+                estimated_costs=None,
+                basis_risk=None,
+                net_daily_edge=decision.net_edge,
+                confidence=decision.confidence,
+                recommended_notional=0.0,
+                max_notional=0.0,
+                raw_json=json.dumps({"market": market.raw, "decision": decision.__dict__}, default=str),
             )
+            session.add(signal)
+            session.flush()
+            self.notifications.maybe_notify_crypto_signal(session, signal, runtime)
             log_event(
                 session,
                 message_es=f"Kalshi BTC {market.ticker}: {decision.action} ({decision.reason_code})",

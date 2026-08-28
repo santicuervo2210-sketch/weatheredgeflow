@@ -518,12 +518,25 @@ function SettingsPage({ data, t, load }: { data: DashboardData; t: typeof copy.e
     ["min_confidence", "Minimum confidence", "number"],
     ["max_spread", "Maximum spread", "number"],
     ["preferred_horizon_hours", "Preferred horizon", "number"],
-    ["user_timezone", "Timezone", "text"]
+    ["user_timezone", "Timezone", "text"],
+    ["alert_email_recipient", "Alert email", "text"],
+    ["alert_min_confidence", "Alert min confidence", "number"],
+    ["alert_min_net_edge", "Alert min edge", "number"],
+    ["alert_min_model_probability", "Alert min probability", "number"],
+    ["alert_min_profit_usd_per_1", "Alert min profit / $1", "number"]
   ] as const;
   return (
     <div className="panel settings-panel">
       <h2><SlidersHorizontal size={18} /> {t.nav[5]}</h2>
       <div className="settings-grid">
+        <label className="checkbox-field">
+          <span>Email alerts</span>
+          <input
+            type="checkbox"
+            checked={Boolean(form.alert_email_enabled)}
+            onChange={(e) => setForm({ ...form, alert_email_enabled: e.target.checked })}
+          />
+        </label>
         <label>
           <span>Language</span>
           <select value={String(form.language)} onChange={(e) => setForm({ ...form, language: e.target.value })}>

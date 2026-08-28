@@ -444,6 +444,28 @@ select {
   padding: 0 10px;
 }
 
+.checkbox-field {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #08151c;
+  padding: 0 12px;
+}
+
+.checkbox-field span {
+  margin-bottom: 0;
+}
+
+.checkbox-field input {
+  width: 18px;
+  min-height: 18px;
+  accent-color: var(--good);
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

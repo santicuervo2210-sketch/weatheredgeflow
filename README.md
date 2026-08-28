@@ -138,6 +138,29 @@ La aplicación no firma, no custodia y no envía órdenes.
 
 Antes de cargar fondos reales en cualquier venue, verificá elegibilidad, regulación local, KYC, métodos de retiro y riesgos. WeatherEdgeflow no evita bloqueos legales ni automatiza trading real.
 
+## Alertas por Gmail/SMTP
+
+WeatherEdgeflow puede mandar un email cuando aparece una señal `OPPORTUNITY` que supera umbrales exigentes de probabilidad, edge, confidence y ganancia potencial. La alerta no ejecuta operaciones.
+
+Para Gmail, activá verificación en dos pasos y creá una App Password. No uses tu contraseña normal. En `.env`:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USERNAME=tu-gmail@gmail.com
+SMTP_PASSWORD=tu-app-password
+SMTP_FROM_EMAIL=tu-gmail@gmail.com
+SMTP_USE_TLS=true
+ALERT_EMAIL_ENABLED=true
+ALERT_EMAIL_RECIPIENT=santicuervo2210@gmail.com
+ALERT_MIN_CONFIDENCE=70
+ALERT_MIN_NET_EDGE=0.10
+ALERT_MIN_MODEL_PROBABILITY=0.60
+ALERT_MIN_PROFIT_USD_PER_1=0.40
+```
+
+También podés cambiar destinatario y umbrales desde `Settings`. Si faltan credenciales SMTP, la app registra la alerta en `Activity` como omitida y sigue funcionando.
+
 ## Dashboard
 
 La cabecera muestra:
