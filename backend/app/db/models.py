@@ -160,6 +160,53 @@ class Signal(Base):
     created_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
 
 
+class CryptoSnapshot(Base):
+    __tablename__ = "crypto_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    timestamp_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+    venue: Mapped[str] = mapped_column(String(64), default="BINANCE")
+    symbol: Mapped[str] = mapped_column(String(32), index=True)
+    spot_bid: Mapped[float | None] = mapped_column(Float)
+    spot_ask: Mapped[float | None] = mapped_column(Float)
+    futures_bid: Mapped[float | None] = mapped_column(Float)
+    futures_ask: Mapped[float | None] = mapped_column(Float)
+    mark_price: Mapped[float | None] = mapped_column(Float)
+    index_price: Mapped[float | None] = mapped_column(Float)
+    funding_rate: Mapped[float | None] = mapped_column(Float)
+    next_funding_time_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    spot_spread: Mapped[float | None] = mapped_column(Float)
+    futures_spread: Mapped[float | None] = mapped_column(Float)
+    basis: Mapped[float | None] = mapped_column(Float)
+    raw_json: Mapped[str] = mapped_column(Text)
+
+
+class CryptoSignal(Base):
+    __tablename__ = "crypto_signals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    timestamp_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+    snapshot_id: Mapped[int | None] = mapped_column(ForeignKey("crypto_snapshots.id", ondelete="SET NULL"), index=True)
+    venue: Mapped[str] = mapped_column(String(64), default="BINANCE")
+    symbol: Mapped[str] = mapped_column(String(32), index=True)
+    strategy: Mapped[str] = mapped_column(String(64), default="SPOT_PERP_CARRY")
+    action: Mapped[str] = mapped_column(String(64), default="NO_TRADE")
+    status: Mapped[str] = mapped_column(String(32), default="REJECTED")
+    reason_code: Mapped[str] = mapped_column(String(128))
+    reason_es: Mapped[str] = mapped_column(Text)
+    reason_en: Mapped[str] = mapped_column(Text)
+    funding_rate: Mapped[float | None] = mapped_column(Float)
+    daily_funding_estimate: Mapped[float | None] = mapped_column(Float)
+    annualized_funding_estimate: Mapped[float | None] = mapped_column(Float)
+    estimated_costs: Mapped[float | None] = mapped_column(Float)
+    basis_risk: Mapped[float | None] = mapped_column(Float)
+    net_daily_edge: Mapped[float | None] = mapped_column(Float)
+    confidence: Mapped[float | None] = mapped_column(Float)
+    recommended_notional: Mapped[float | None] = mapped_column(Float)
+    max_notional: Mapped[float | None] = mapped_column(Float)
+    raw_json: Mapped[str] = mapped_column(Text)
+
+
 class PaperOrder(Base):
     __tablename__ = "paper_orders"
 
@@ -243,4 +290,3 @@ class SystemEvent(Base):
     message_es: Mapped[str] = mapped_column(Text)
     message_en: Mapped[str] = mapped_column(Text)
     details_json: Mapped[str | None] = mapped_column(Text)
-

@@ -50,6 +50,29 @@ export type Signal = {
   data_freshness?: Record<string, string | null>;
 };
 
+export type CryptoSignal = {
+  id: number;
+  timestamp_utc: string;
+  venue: string;
+  symbol: string;
+  strategy: string;
+  action: string;
+  status: string;
+  reason_code: string;
+  reason_es: string;
+  reason_en: string;
+  funding_rate?: number | null;
+  daily_funding_estimate?: number | null;
+  annualized_funding_estimate?: number | null;
+  estimated_costs?: number | null;
+  basis_risk?: number | null;
+  net_daily_edge?: number | null;
+  confidence?: number | null;
+  recommended_notional?: number | null;
+  max_notional?: number | null;
+  raw?: Record<string, unknown>;
+};
+
 export type DashboardData = {
   settings: Record<string, unknown>;
   runtime: Record<string, unknown>;
@@ -75,6 +98,7 @@ export type DashboardData = {
   } | null;
   metrics: Record<string, number>;
   signals: Signal[];
+  crypto_signals: CryptoSignal[];
   positions: Array<Record<string, unknown>>;
   orders: Array<Record<string, unknown>>;
   activity: Array<Record<string, unknown>>;
@@ -92,6 +116,10 @@ export async function fetchSignal(id: number): Promise<Signal> {
 
 export async function runScan(): Promise<Record<string, unknown>> {
   return requestJson("/api/scan", { method: "POST" });
+}
+
+export async function runCryptoScan(): Promise<Record<string, unknown>> {
+  return requestJson("/api/crypto/scan", { method: "POST" });
 }
 
 export async function updateSettings(updates: Record<string, unknown>, confirmed = false): Promise<Record<string, unknown>> {
@@ -118,4 +146,3 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
   }
   return response.json() as Promise<T>;
 }
-

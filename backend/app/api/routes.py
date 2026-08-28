@@ -8,12 +8,14 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.api.schemas import ControlUpdate, ModeUpdate, ScanResponse, SettingsUpdate
+from app.clients.binance_public import BinancePublicClient
 from app.clients.kalshi import KalshiClient
 from app.clients.polymarket import PolymarketClient
 from app.clients.weather import OpenMeteoProvider, TheWeatherCompanyKalshiProvider
 from app.config import get_settings
 from app.db.models import (
     BankrollSnapshot,
+    CryptoSignal,
     PaperOrder,
     PaperPosition,
     Scan,
@@ -21,6 +23,7 @@ from app.db.models import (
     SystemEvent,
 )
 from app.db.session import session_scope
+from app.services.crypto_scanner import CryptoScannerService
 from app.services.events import log_event
 from app.services.portfolio import PortfolioService
 from app.services.settings_service import SettingsService
@@ -47,6 +50,7 @@ async def dashboard(request: Request) -> dict[str, Any]:
         signals = session.query(Signal).order_by(Signal.created_at_utc.desc()).limit(100).all()
         positions = session.query(PaperPosition).order_by(PaperPosition.opened_at_utc.desc()).limit(100).all()
         orders = session.query(PaperOrder).order_by(PaperOrder.order_timestamp_utc.desc()).limit(100).all()
+        crypto_signals = session.query(CryptoSignal).order_by(CryptoSignal.timestamp_utc.desc()).limit(100).all()
         events = session.query(SystemEvent).order_by(SystemEvent.timestamp_utc.desc()).limit(120).all()
         snapshots = session.query(BankrollSnapshot).order_by(BankrollSnapshot.timestamp_utc.asc()).limit(500).all()
         metrics = portfolio.metrics(session, runtime)
@@ -60,6 +64,7 @@ async def dashboard(request: Request) -> dict[str, Any]:
             "signals": [signal_dict(s) for s in signals],
             "positions": [position_dict(p) for p in positions],
             "orders": [order_dict(o) for o in orders],
+            "crypto_signals": [crypto_signal_dict(s) for s in crypto_signals],
             "activity": [event_dict(e) for e in events],
             "bankroll_chart": [snapshot_dict(s) for s in snapshots],
             "analytics": analytics,
@@ -153,6 +158,12 @@ async def run_scan(request: Request) -> dict[str, Any]:
     return await scanner.run_once()
 
 
+@router.post("/crypto/scan")
+async def run_crypto_scan(request: Request) -> dict[str, Any]:
+    scanner = CryptoScannerService(get_settings(), request.app.state.settings_service)
+    return await scanner.run_once()
+
+
 @router.get("/activity")
 async def activity(limit: int = 200) -> dict[str, Any]:
     with session_scope() as session:
@@ -175,6 +186,7 @@ async def build_health(request: Request) -> dict[str, Any]:
     venue = KalshiClient(settings) if venue_name == "KALSHI" else PolymarketClient(settings)
     weather = OpenMeteoProvider(settings)
     twc = TheWeatherCompanyKalshiProvider(settings)
+    binance = BinancePublicClient(settings)
     try:
         venue_health = await venue.health()
     finally:
@@ -187,6 +199,10 @@ async def build_health(request: Request) -> dict[str, Any]:
         twc_health = await twc.health()
     finally:
         await twc.close()
+    try:
+        binance_health = await binance.health()
+    finally:
+        await binance.close()
     scheduler_health = scheduler.status()
     venue_ok = bool(venue_health.get("ok") if venue_name == "KALSHI" else venue_health.get("gamma"))
     twc_ok = bool(twc_health.get("ok")) if venue_name == "KALSHI" else True
@@ -202,6 +218,32 @@ async def build_health(request: Request) -> dict[str, Any]:
         "kalshi": venue_health if venue_name == "KALSHI" else {"skipped": True},
         "weather": weather_health,
         "weather_company_kalshi": twc_health,
+        "binance_public": binance_health,
+    }
+
+
+def crypto_signal_dict(signal: CryptoSignal) -> dict[str, Any]:
+    return {
+        "id": signal.id,
+        "timestamp_utc": iso_utc(signal.timestamp_utc),
+        "venue": signal.venue,
+        "symbol": signal.symbol,
+        "strategy": signal.strategy,
+        "action": signal.action,
+        "status": signal.status,
+        "reason_code": signal.reason_code,
+        "reason_es": signal.reason_es,
+        "reason_en": signal.reason_en,
+        "funding_rate": signal.funding_rate,
+        "daily_funding_estimate": signal.daily_funding_estimate,
+        "annualized_funding_estimate": signal.annualized_funding_estimate,
+        "estimated_costs": signal.estimated_costs,
+        "basis_risk": signal.basis_risk,
+        "net_daily_edge": signal.net_daily_edge,
+        "confidence": signal.confidence,
+        "recommended_notional": signal.recommended_notional,
+        "max_notional": signal.max_notional,
+        "raw": loads(signal.raw_json, {}),
     }
 
 

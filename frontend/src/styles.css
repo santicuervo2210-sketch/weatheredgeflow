@@ -279,6 +279,19 @@ h2 {
   overflow: hidden;
 }
 
+.panel-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.panel-head h2,
+.panel-head .primary {
+  margin: 0;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -567,4 +580,3 @@ pre {
     grid-template-columns: 1fr;
   }
 }
-

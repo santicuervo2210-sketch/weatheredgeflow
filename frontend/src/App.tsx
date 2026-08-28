@@ -11,6 +11,7 @@ import {
   Settings,
   ShieldAlert,
   SlidersHorizontal,
+  Bitcoin,
   Zap
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -26,11 +27,11 @@ import {
   XAxis,
   YAxis
 } from "recharts";
-import { DashboardData, Language, Signal, fetchDashboard, fetchSignal, runScan, updateControl, updateSettings } from "./api";
+import { CryptoSignal, DashboardData, Language, Signal, fetchDashboard, fetchSignal, runCryptoScan, runScan, updateControl, updateSettings } from "./api";
 
 const copy = {
   es: {
-    nav: ["Oportunidades", "Cartera", "Rendimiento", "Actividad", "Settings"],
+    nav: ["Oportunidades", "Crypto", "Cartera", "Rendimiento", "Actividad", "Settings"],
     mode: "MODO",
     status: "STATUS",
     lastScan: "ÚLTIMO SCAN",
@@ -75,7 +76,7 @@ const copy = {
     firstRun: "Analizando mercados..."
   },
   en: {
-    nav: ["Opportunities", "Portfolio", "Analytics", "Activity", "Settings"],
+    nav: ["Opportunities", "Crypto", "Portfolio", "Analytics", "Activity", "Settings"],
     mode: "MODE",
     status: "STATUS",
     lastScan: "LAST SCAN",
@@ -121,7 +122,7 @@ const copy = {
   }
 };
 
-type Page = "opportunities" | "portfolio" | "analytics" | "activity" | "settings";
+type Page = "opportunities" | "crypto" | "portfolio" | "analytics" | "activity" | "settings";
 
 export default function App() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -155,10 +156,11 @@ export default function App() {
 
   const nav = [
     { id: "opportunities" as Page, icon: Zap, label: t.nav[0] },
-    { id: "portfolio" as Page, icon: BriefcaseBusiness, label: t.nav[1] },
-    { id: "analytics" as Page, icon: BarChart3, label: t.nav[2] },
-    { id: "activity" as Page, icon: Activity, label: t.nav[3] },
-    { id: "settings" as Page, icon: Settings, label: t.nav[4] }
+    { id: "crypto" as Page, icon: Bitcoin, label: t.nav[1] },
+    { id: "portfolio" as Page, icon: BriefcaseBusiness, label: t.nav[2] },
+    { id: "analytics" as Page, icon: BarChart3, label: t.nav[3] },
+    { id: "activity" as Page, icon: Activity, label: t.nav[4] },
+    { id: "settings" as Page, icon: Settings, label: t.nav[5] }
   ];
 
   if (loading && !data) {
@@ -230,6 +232,7 @@ export default function App() {
 
         <section className="content">
           {data && page === "opportunities" && <Opportunities data={data} t={t} language={language} onSelect={async (signal) => setSelected(await fetchSignal(signal.id))} />}
+          {data && page === "crypto" && <CryptoPanel data={data} language={language} load={load} />}
           {data && page === "portfolio" && <Portfolio data={data} t={t} />}
           {data && page === "analytics" && <Analytics data={data} t={t} />}
           {data && page === "activity" && <ActivityLog data={data} language={language} t={t} />}
@@ -313,6 +316,57 @@ function Opportunities({ data, t, language, onSelect }: { data: DashboardData; t
   );
 }
 
+function CryptoPanel({ data, language, load }: { data: DashboardData; language: Language; load: () => Promise<void> }) {
+  return (
+    <div className="panel">
+      <div className="panel-head">
+        <h2>Crypto Carry</h2>
+        <button className="primary" onClick={async () => { await runCryptoScan(); await load(); }}>
+          <RefreshCw size={18} />
+          <span>{language === "es" ? "Analizar crypto" : "Scan crypto"}</span>
+        </button>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Action</th>
+              <th>Status</th>
+              <th>Funding</th>
+              <th>Daily est.</th>
+              <th>Costs</th>
+              <th>Basis risk</th>
+              <th>Net daily edge</th>
+              <th>Confidence</th>
+              <th>Notional</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(data.crypto_signals || []).length === 0 && <EmptyRow colSpan={11} text="-" />}
+            {(data.crypto_signals || []).map((signal: CryptoSignal) => (
+              <tr key={signal.id} className={rowTone(signal.status)}>
+                <td>{signal.symbol}</td>
+                <td>{signal.action}</td>
+                <td><span className="badge">{signal.status}</span></td>
+                <td>{pct(signal.funding_rate)}</td>
+                <td>{pct(signal.daily_funding_estimate)}</td>
+                <td>{pct(signal.estimated_costs)}</td>
+                <td>{pct(signal.basis_risk)}</td>
+                <td>{pct(signal.net_daily_edge)}</td>
+                <td>{score(signal.confidence)}</td>
+                <td>{usd(signal.recommended_notional)}</td>
+                <td className="market-cell">{language === "es" ? signal.reason_es : signal.reason_en}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function Portfolio({ data, t }: { data: DashboardData; t: typeof copy.es }) {
   const metrics = data.metrics;
   const statRows = [
@@ -330,7 +384,7 @@ function Portfolio({ data, t }: { data: DashboardData; t: typeof copy.es }) {
   return (
     <div className="grid-two">
       <div className="panel">
-        <h2>{t.nav[1]}</h2>
+        <h2>{t.nav[2]}</h2>
         <div className="metric-list">
           {statRows.map(([label, value]) => (
             <div key={label}><span>{label}</span><strong>{value}</strong></div>
@@ -396,7 +450,7 @@ function Analytics({ data, t }: { data: DashboardData; t: typeof copy.es }) {
   return (
     <div className="grid-two">
       <div className="panel">
-        <h2>{t.nav[2]}</h2>
+        <h2>{t.nav[3]}</h2>
         <div className="metric-list">
           {cards.map(([label, value]) => <div key={String(label)}><span>{label}</span><strong>{String(value)}</strong></div>)}
         </div>
@@ -428,7 +482,7 @@ function BarPanel({ title, data, x, y }: { title: string; data: Array<Record<str
 function ActivityLog({ data, language, t }: { data: DashboardData; language: Language; t: typeof copy.es }) {
   return (
     <div className="panel log">
-      <h2>{t.nav[3]}</h2>
+      <h2>{t.nav[4]}</h2>
       {data.activity.length === 0 && <p>{t.noRows}</p>}
       {data.activity.map((event) => (
         <div className={`log-row ${String(event.level).toLowerCase()}`} key={String(event.id)}>
@@ -462,7 +516,7 @@ function SettingsPage({ data, t, load }: { data: DashboardData; t: typeof copy.e
   ] as const;
   return (
     <div className="panel settings-panel">
-      <h2><SlidersHorizontal size={18} /> {t.nav[4]}</h2>
+      <h2><SlidersHorizontal size={18} /> {t.nav[5]}</h2>
       <div className="settings-grid">
         <label>
           <span>Language</span>
