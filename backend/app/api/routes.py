@@ -160,7 +160,9 @@ async def run_scan(request: Request) -> dict[str, Any]:
 
 @router.post("/crypto/scan")
 async def run_crypto_scan(request: Request) -> dict[str, Any]:
-    scanner = CryptoScannerService(get_settings(), request.app.state.settings_service)
+    scanner = getattr(request.app.state, "crypto_scanner", None)
+    if scanner is None:
+        scanner = CryptoScannerService(get_settings(), request.app.state.settings_service)
     return await scanner.run_once()
 
 

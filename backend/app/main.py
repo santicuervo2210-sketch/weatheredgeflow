@@ -15,6 +15,7 @@ from app.config import get_settings
 from app.db.migrations import run_migrations
 from app.db.session import engine, session_scope
 from app.services.events import log_event
+from app.services.crypto_scanner import CryptoScannerService
 from app.services.scanner import ScannerService
 from app.services.scheduler import ScannerScheduler
 from app.services.settings_service import SettingsService
@@ -59,12 +60,15 @@ async def lifespan(app: FastAPI):
             category="SYSTEM",
         )
     scanner = ScannerService(settings, settings_service)
-    scheduler = ScannerScheduler(scanner, settings_service)
+    crypto_scanner = CryptoScannerService(settings, settings_service)
+    scheduler = ScannerScheduler(scanner, settings_service, crypto_scanner)
     app.state.settings_service = settings_service
     app.state.scanner = scanner
+    app.state.crypto_scanner = crypto_scanner
     app.state.scheduler = scheduler
     scheduler.start()
     asyncio.create_task(scanner.run_once())
+    asyncio.create_task(crypto_scanner.run_once())
     try:
         yield
     finally:
