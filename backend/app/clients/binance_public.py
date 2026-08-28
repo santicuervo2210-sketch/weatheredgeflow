@@ -78,6 +78,10 @@ class BinancePublicClient:
         premium = await self.futures.get("/fapi/v1/premiumIndex", params={"symbol": normalized})
         return parse_binance_snapshot(normalized, spot_book, futures_book, premium)
 
+    async def get_klines(self, symbol: str, interval: str = "1h", limit: int = 336) -> list[dict[str, float]]:
+        payload = await self.spot.get("/api/v3/klines", params={"symbol": symbol.upper().strip(), "interval": interval, "limit": limit})
+        return parse_klines(payload)
+
 
 def parse_binance_snapshot(
     symbol: str,
@@ -126,3 +130,31 @@ def _datetime_from_ms(value: float | None) -> datetime | None:
     if value is None or value <= 0:
         return None
     return datetime.fromtimestamp(value / 1000.0, tz=UTC)
+
+
+def parse_klines(payload: Any) -> list[dict[str, float]]:
+    if not isinstance(payload, list):
+        raise ValueError("Malformed Binance klines payload")
+    rows: list[dict[str, float]] = []
+    for item in payload:
+        if not isinstance(item, list) or len(item) < 5:
+            continue
+        rows.append(
+            {
+                "open_time_ms": _required_float_from_value(item[0]),
+                "open": _required_float_from_value(item[1]),
+                "high": _required_float_from_value(item[2]),
+                "low": _required_float_from_value(item[3]),
+                "close": _required_float_from_value(item[4]),
+            }
+        )
+    if len(rows) < 24:
+        raise ValueError("Not enough Binance kline history")
+    return rows
+
+
+def _required_float_from_value(value: Any) -> float:
+    parsed = _float_or_none(value)
+    if parsed is None:
+        raise ValueError("Missing numeric Binance kline field")
+    return parsed

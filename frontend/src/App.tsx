@@ -320,7 +320,7 @@ function CryptoPanel({ data, language, load }: { data: DashboardData; language: 
   return (
     <div className="panel">
       <div className="panel-head">
-        <h2>Crypto Carry</h2>
+        <h2>{language === "es" ? "Crypto Signals" : "Crypto Signals"}</h2>
         <button className="primary" onClick={async () => { await runCryptoScan(); await load(); }}>
           <RefreshCw size={18} />
           <span>{language === "es" ? "Analizar crypto" : "Scan crypto"}</span>
@@ -334,6 +334,9 @@ function CryptoPanel({ data, language, load }: { data: DashboardData; language: 
               <th>Action</th>
               <th>Status</th>
               <th>Funding</th>
+              <th>Model prob.</th>
+              <th>Market prob.</th>
+              <th>Raw edge</th>
               <th>Daily est.</th>
               <th>Costs</th>
               <th>Basis risk</th>
@@ -344,13 +347,16 @@ function CryptoPanel({ data, language, load }: { data: DashboardData; language: 
             </tr>
           </thead>
           <tbody>
-            {(data.crypto_signals || []).length === 0 && <EmptyRow colSpan={11} text="-" />}
+            {(data.crypto_signals || []).length === 0 && <EmptyRow colSpan={14} text="-" />}
             {(data.crypto_signals || []).map((signal: CryptoSignal) => (
               <tr key={signal.id} className={rowTone(signal.status)}>
                 <td>{signal.symbol}</td>
                 <td>{signal.action}</td>
                 <td><span className="badge">{signal.status}</span></td>
                 <td>{pct(signal.funding_rate)}</td>
+                <td>{pct(signal.model_probability)}</td>
+                <td>{pct(signal.market_probability)}</td>
+                <td>{pct(signal.raw_edge)}</td>
                 <td>{pct(signal.daily_funding_estimate)}</td>
                 <td>{pct(signal.estimated_costs)}</td>
                 <td>{pct(signal.basis_risk)}</td>

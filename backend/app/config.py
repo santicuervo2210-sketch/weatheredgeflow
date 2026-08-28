@@ -34,6 +34,7 @@ class AppSettings(BaseSettings):
     binance_spot_base_url: str = "https://api.binance.com"
     binance_futures_base_url: str = "https://fapi.binance.com"
     crypto_symbols: str = "BTCUSDT,ETHUSDT,SOLUSDT"
+    kalshi_crypto_series_tickers: str = "KXBTCMAXY,KXBTCMINY"
     crypto_min_net_daily_edge: float = 0.001
     crypto_max_spread: float = 0.001
     crypto_max_basis_risk: float = 0.005
@@ -41,6 +42,10 @@ class AppSettings(BaseSettings):
     crypto_spot_fee_rate: float = 0.001
     crypto_futures_fee_rate: float = 0.0005
     crypto_safety_margin: float = 0.001
+    crypto_barrier_vol_window_days: int = 14
+    crypto_barrier_min_net_edge: float = 0.15
+    crypto_barrier_safety_margin: float = 0.08
+    crypto_barrier_max_spread: float = 0.15
     openmeteo_forecast_base_url: str = "https://api.open-meteo.com/v1"
     openmeteo_geocoding_base_url: str = "https://geocoding-api.open-meteo.com/v1"
     noaa_base_url: str = "https://api.weather.gov"

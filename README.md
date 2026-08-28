@@ -2,7 +2,7 @@
 
 WeatherEdgeflow analiza mercados meteorológicos abiertos de venues tipo prediction market. Por defecto usa Kalshi (`VENUE=KALSHI`) porque expone market data pública y mercados meteorológicos accesibles desde API oficial. También conserva soporte opcional de Polymarket (`VENUE=POLYMARKET`) para entornos donde sea legal y accesible.
 
-La aplicación compara precios ejecutables del orderbook contra pronósticos públicos, estima probabilidades mediante un motor determinístico y registra señales, descartes y operaciones PAPER en SQLite.
+La aplicación compara precios ejecutables del orderbook contra pronósticos públicos, estima probabilidades mediante un motor determinístico y registra señales, descartes y operaciones PAPER en SQLite. Además incluye un módulo auxiliar `Crypto` que analiza carry spot/perp de Binance y barreras de BTC en Kalshi con datos públicos.
 
 La aplicación tiene tres modos:
 
@@ -18,7 +18,7 @@ WeatherEdgeflow existe para buscar valor esperado positivo después de costes, i
 - Frontend: React + TypeScript + Vite, servido por FastAPI tras el build.
 - Base de datos: SQLite en `data/weatheredgeflow.sqlite3`.
 - Migraciones: SQL versionado en `backend/app/db/migrations`.
-- APIs públicas: Kalshi Trade API, Open-Meteo, NOAA cuando aplica, y soporte opcional para Gamma/CLOB de Polymarket.
+- APIs públicas: Kalshi Trade API, Open-Meteo, NOAA cuando aplica, Binance Spot/USDT-M market data, y soporte opcional para Gamma/CLOB de Polymarket.
 
 Componentes principales:
 
@@ -33,6 +33,8 @@ Componentes principales:
 - `RiskManager`: centraliza límites de bankroll y exposición.
 - `PaperExecutionEngine`: simula fills sólo contra liquidez disponible.
 - `ResolutionEngine`: actualiza PnL PAPER cuando el venue publica resolución.
+- `CryptoCarryEngine`: monitorea carry spot/perp en Binance, pero no crea operaciones reales.
+- `CryptoBarrierEngine`: estima probabilidades de mercados Kalshi de barreras BTC usando precio spot y volatilidad realizada de Binance.
 
 ## Instalación local
 
@@ -104,6 +106,12 @@ SCAN_INTERVAL_MINUTES=20
 MODE=PAPER
 VENUE=KALSHI
 KALSHI_SERIES_TICKERS=KXHIGHNY,KXHIGHCHI,KXHIGHMIA,KXHIGHLAX,KXHIGHDEN
+BINANCE_SPOT_BASE_URL=https://api.binance.com
+BINANCE_FUTURES_BASE_URL=https://fapi.binance.com
+CRYPTO_SYMBOLS=BTCUSDT,ETHUSDT,SOLUSDT
+KALSHI_CRYPTO_SERIES_TICKERS=KXBTCMAXY,KXBTCMINY
+CRYPTO_BARRIER_MIN_NET_EDGE=0.15
+CRYPTO_BARRIER_SAFETY_MARGIN=0.08
 ```
 
 No se requieren credenciales privadas. No configures seed phrases ni private keys: la aplicación no las usa.
@@ -143,6 +151,7 @@ La cabecera muestra:
 Páginas:
 
 - `Oportunidades`: tabla principal y detalle completo por señal.
+- `Crypto`: señales auxiliares de carry Binance y barreras BTC Kalshi.
 - `Cartera`: bankroll, cash, exposición, PnL, posiciones e historial.
 - `Rendimiento`: señales, trades, edge promedio, calibración y buckets.
 - `Actividad`: log humano de cada ciclo.
@@ -191,6 +200,7 @@ Para un VPS barato, mantener SQLite con volumen persistente es suficiente para V
 - `BELOW_MIN_ORDER`: el stake configurado es menor que el mínimo del mercado.
 - `UNKNOWN_RESOLUTION_SOURCE`: el mercado no tiene reglas/fuente suficientes para V1.
 - `NO_ORDERBOOK`: el venue no devolvió libro ejecutable.
+- `EDGE_BELOW_THRESHOLD`: la cuota parece interesante, pero después de spread, costes y margen no alcanza.
 
 ## English Short Section
 

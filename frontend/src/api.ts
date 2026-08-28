@@ -62,6 +62,9 @@ export type CryptoSignal = {
   reason_es: string;
   reason_en: string;
   funding_rate?: number | null;
+  model_probability?: number | null;
+  market_probability?: number | null;
+  raw_edge?: number | null;
   daily_funding_estimate?: number | null;
   annualized_funding_estimate?: number | null;
   estimated_costs?: number | null;

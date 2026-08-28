@@ -57,6 +57,15 @@ class KalshiClient:
                     break
         return items[:limit]
 
+    async def get_markets_by_series(self, series_tickers: list[str], limit_per_series: int = 50) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        for series_ticker in series_tickers:
+            payload = await self.client.get("/markets", params={"series_ticker": series_ticker, "limit": limit_per_series})
+            for market in _extract_markets(payload):
+                market["series_ticker"] = series_ticker
+                items.append(market)
+        return items
+
     async def get_market(self, market_id: str) -> dict[str, Any]:
         ticker = _ticker_from_market_id(market_id)
         payload = await self.client.get(f"/markets/{ticker}")

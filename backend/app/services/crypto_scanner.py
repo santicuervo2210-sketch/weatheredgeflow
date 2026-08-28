@@ -5,9 +5,11 @@ import logging
 from typing import Any
 
 from app.clients.binance_public import BinancePublicClient, BinanceMarketSnapshot
+from app.clients.kalshi import KalshiClient
 from app.config import AppSettings
 from app.db.models import CryptoSignal, CryptoSnapshot
 from app.db.session import session_scope
+from app.domain.crypto_barrier import CryptoBarrierEngine, parse_kalshi_btc_market
 from app.domain.crypto_carry import CryptoCarryEngine, CryptoCarryLimits
 from app.services.events import log_event
 from app.services.settings_service import SettingsService
@@ -22,9 +24,11 @@ class CryptoScannerService:
         self.app_settings = app_settings
         self.settings_service = settings_service
         self.engine = CryptoCarryEngine()
+        self.barrier_engine = CryptoBarrierEngine()
 
     async def run_once(self) -> dict[str, Any]:
         client = BinancePublicClient(self.app_settings)
+        kalshi = KalshiClient(self.app_settings)
         symbols = [symbol.strip().upper() for symbol in self.app_settings.crypto_symbols.split(",") if symbol.strip()]
         scanned = 0
         opportunities = 0
@@ -54,6 +58,22 @@ class CryptoScannerService:
                             category="CRYPTO",
                             level="ERROR",
                         )
+            try:
+                barrier_result = await self._scan_kalshi_btc_barriers(client, kalshi)
+                scanned += barrier_result["markets"]
+                opportunities += barrier_result["opportunities"]
+                errors += barrier_result["errors"]
+            except Exception as exc:  # noqa: BLE001
+                errors += 1
+                logger.exception("kalshi btc barrier scan failed")
+                with session_scope() as session:
+                    log_event(
+                        session,
+                        message_es=f"Error crypto Kalshi BTC: {exc}",
+                        message_en=f"Kalshi BTC crypto error: {exc}",
+                        category="CRYPTO",
+                        level="ERROR",
+                    )
             with session_scope() as session:
                 log_event(
                     session,
@@ -64,7 +84,30 @@ class CryptoScannerService:
                 )
         finally:
             await client.close()
+            await kalshi.close()
         return {"status": "COMPLETED" if errors == 0 else "DEGRADED", "symbols": scanned, "opportunities": opportunities, "errors": errors}
+
+    async def _scan_kalshi_btc_barriers(self, client: BinancePublicClient, kalshi: KalshiClient) -> dict[str, int]:
+        series = [item.strip().upper() for item in self.app_settings.kalshi_crypto_series_tickers.split(",") if item.strip()]
+        markets = await kalshi.get_markets_by_series(series, limit_per_series=20)
+        btc_snapshot = await client.get_snapshot("BTCUSDT")
+        klines = await client.get_klines("BTCUSDT", limit=max(48, self.app_settings.crypto_barrier_vol_window_days * 24))
+        closes = [row["close"] for row in klines]
+        scanned = 0
+        opportunities = 0
+        errors = 0
+        for raw in markets:
+            parsed = parse_kalshi_btc_market(raw)
+            if parsed is None:
+                continue
+            scanned += 1
+            try:
+                created = self._save_barrier_decision(parsed, spot_price=btc_snapshot.spot_mid, hourly_closes=closes)
+                opportunities += 1 if created else 0
+            except Exception as exc:  # noqa: BLE001
+                errors += 1
+                logger.info("btc barrier market skipped %s: %s", raw.get("ticker"), exc)
+        return {"markets": scanned, "opportunities": opportunities, "errors": errors}
 
     def _save_decision(self, snapshot: BinanceMarketSnapshot) -> bool:
         with session_scope() as session:
@@ -114,6 +157,9 @@ class CryptoScannerService:
                     reason_es=decision.reason_es,
                     reason_en=decision.reason_en,
                     funding_rate=decision.funding_rate,
+                    model_probability=None,
+                    market_probability=None,
+                    raw_edge=None,
                     daily_funding_estimate=decision.daily_funding_estimate,
                     annualized_funding_estimate=decision.annualized_funding_estimate,
                     estimated_costs=decision.estimated_costs,
@@ -131,5 +177,51 @@ class CryptoScannerService:
                 message_en=f"Crypto {snapshot.symbol}: {decision.action} ({decision.reason_code})",
                 category="CRYPTO",
                 details={"net_daily_edge": decision.net_daily_edge},
+            )
+            return decision.status == "OPPORTUNITY"
+
+    def _save_barrier_decision(self, market: Any, *, spot_price: float, hourly_closes: list[float]) -> bool:
+        decision = self.barrier_engine.evaluate(
+            market,
+            spot_price=spot_price,
+            hourly_closes=hourly_closes,
+            min_net_edge=self.app_settings.crypto_barrier_min_net_edge,
+            safety_margin=self.app_settings.crypto_barrier_safety_margin,
+            max_spread=self.app_settings.crypto_barrier_max_spread,
+        )
+        with session_scope() as session:
+            session.add(
+                CryptoSignal(
+                    timestamp_utc=utc_now(),
+                    snapshot_id=None,
+                    venue="KALSHI",
+                    symbol=decision.symbol,
+                    strategy=self.barrier_engine.strategy,
+                    action=decision.action,
+                    status=decision.status,
+                    reason_code=decision.reason_code,
+                    reason_es=decision.reason_es,
+                    reason_en=decision.reason_en,
+                    funding_rate=None,
+                    model_probability=decision.model_probability,
+                    market_probability=decision.market_probability,
+                    raw_edge=decision.raw_edge,
+                    daily_funding_estimate=None,
+                    annualized_funding_estimate=None,
+                    estimated_costs=None,
+                    basis_risk=None,
+                    net_daily_edge=decision.net_edge,
+                    confidence=decision.confidence,
+                    recommended_notional=0.0,
+                    max_notional=0.0,
+                    raw_json=json.dumps({"market": market.raw, "decision": decision.__dict__}, default=str),
+                )
+            )
+            log_event(
+                session,
+                message_es=f"Kalshi BTC {market.ticker}: {decision.action} ({decision.reason_code})",
+                message_en=f"Kalshi BTC {market.ticker}: {decision.action} ({decision.reason_code})",
+                category="CRYPTO",
+                details={"model_probability": decision.model_probability, "market_probability": decision.market_probability},
             )
             return decision.status == "OPPORTUNITY"
