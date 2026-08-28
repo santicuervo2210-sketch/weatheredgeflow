@@ -59,7 +59,7 @@ class KalshiWeatherMarketParser:
         outcomes = [
             ParsedOutcome(
                 token_id=f"KALSHI:{ticker}:YES",
-                label=str(market.get("yes_sub_title") or "YES"),
+                label=self._outcome_label(market, "YES", strike_type, lower, upper),
                 side="YES",
                 lower_bound=lower,
                 upper_bound=upper,
@@ -67,7 +67,7 @@ class KalshiWeatherMarketParser:
             ),
             ParsedOutcome(
                 token_id=f"KALSHI:{ticker}:NO",
-                label=str(market.get("no_sub_title") or "NO"),
+                label=self._outcome_label(market, "NO", strike_type, lower, upper),
                 side="NO",
                 lower_bound=lower,
                 upper_bound=upper,
@@ -174,6 +174,26 @@ class KalshiWeatherMarketParser:
         match = re.search(r"\(([A-Z]{3,8})\)", rules)
         return match.group(1) if match else None
 
+    def _outcome_label(
+        self,
+        market: dict[str, Any],
+        side: str,
+        strike_type: str,
+        lower: float | None,
+        upper: float | None,
+    ) -> str:
+        explicit = str(market.get(f"{side.lower()}_sub_title") or "").strip()
+        yes_explicit = str(market.get("yes_sub_title") or "").strip()
+        if explicit and (side == "YES" or explicit != yes_explicit):
+            return explicit
+        if strike_type == "less" and upper is not None:
+            return f"{_format_temp(upper)} or above" if side == "NO" else f"below {_format_temp(upper)}"
+        if strike_type == "greater" and lower is not None:
+            return f"above {_format_temp(lower)}" if side == "YES" else f"{_format_temp(lower)} or below"
+        if lower is not None and upper is not None:
+            return f"{_format_temp(lower)} to {_format_temp(upper)}" if side == "YES" else f"not {_format_temp(lower)} to {_format_temp(upper)}"
+        return side
+
 
 def _float_or_none(value: Any) -> float | None:
     if value is None or value == "":
@@ -182,3 +202,9 @@ def _float_or_none(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _format_temp(value: float) -> str:
+    rounded = round(value)
+    text = str(int(rounded)) if abs(value - rounded) < 1e-9 else f"{value:g}"
+    return f"{text}F"

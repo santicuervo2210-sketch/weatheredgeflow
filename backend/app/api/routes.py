@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.api.schemas import ControlUpdate, ModeUpdate, ScanResponse, SettingsUpdate
 from app.clients.kalshi import KalshiClient
 from app.clients.polymarket import PolymarketClient
-from app.clients.weather import OpenMeteoProvider
+from app.clients.weather import OpenMeteoProvider, TheWeatherCompanyKalshiProvider
 from app.config import get_settings
 from app.db.models import (
     BankrollSnapshot,
@@ -174,6 +174,7 @@ async def build_health(request: Request) -> dict[str, Any]:
     venue_name = settings.venue
     venue = KalshiClient(settings) if venue_name == "KALSHI" else PolymarketClient(settings)
     weather = OpenMeteoProvider(settings)
+    twc = TheWeatherCompanyKalshiProvider(settings)
     try:
         venue_health = await venue.health()
     finally:
@@ -182,9 +183,14 @@ async def build_health(request: Request) -> dict[str, Any]:
         weather_health = await weather.health()
     finally:
         await weather.close()
+    try:
+        twc_health = await twc.health()
+    finally:
+        await twc.close()
     scheduler_health = scheduler.status()
     venue_ok = bool(venue_health.get("ok") if venue_name == "KALSHI" else venue_health.get("gamma"))
-    ok = db_ok and bool(scheduler_health["running"]) and venue_ok and weather_health.get("ok")
+    twc_ok = bool(twc_health.get("ok")) if venue_name == "KALSHI" else True
+    ok = db_ok and bool(scheduler_health["running"]) and venue_ok and weather_health.get("ok") and twc_ok
     degraded = db_ok and bool(scheduler_health["running"]) and weather_health.get("ok")
     return {
         "status": "ONLINE" if ok else ("DEGRADED" if degraded else "OFFLINE"),
@@ -195,6 +201,7 @@ async def build_health(request: Request) -> dict[str, Any]:
         "polymarket": venue_health if venue_name == "POLYMARKET" else {"skipped": True},
         "kalshi": venue_health if venue_name == "KALSHI" else {"skipped": True},
         "weather": weather_health,
+        "weather_company_kalshi": twc_health,
     }
 
 

@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.clients.http import PublicAPIError
 from app.clients.kalshi import KalshiClient
 from app.clients.polymarket import PolymarketClient
-from app.clients.weather import NOAAProvider, OpenMeteoProvider
+from app.clients.weather import NOAAProvider, OpenMeteoProvider, TheWeatherCompanyKalshiProvider
 from app.config import AppSettings
 from app.db.models import (
     Market,
@@ -92,6 +92,7 @@ class ScannerService:
             parser = self.kalshi_parser if venue_name == "KALSHI" else self.parser
             openmeteo = OpenMeteoProvider(self.app_settings)
             noaa = NOAAProvider(self.app_settings)
+            twc = TheWeatherCompanyKalshiProvider(self.app_settings)
             errors = 0
             opportunities = 0
             weather_markets: list[dict[str, Any]] = []
@@ -125,6 +126,7 @@ class ScannerService:
                             poly=market_client,
                             openmeteo=openmeteo,
                             noaa=noaa,
+                            twc=twc,
                             geo_cache=geo_cache,
                             weather_cache=weather_cache,
                             obs_cache=obs_cache,
@@ -157,6 +159,7 @@ class ScannerService:
                 await market_client.close()
                 await openmeteo.close()
                 await noaa.close()
+                await twc.close()
 
             elapsed_ms = int((time.perf_counter() - start) * 1000)
             with session_scope() as session:
@@ -207,6 +210,7 @@ class ScannerService:
         poly: Any,
         openmeteo: OpenMeteoProvider,
         noaa: NOAAProvider,
+        twc: TheWeatherCompanyKalshiProvider,
         geo_cache: dict[tuple[str, str | None], Any],
         weather_cache: dict[tuple[float, float, str, str, str], ForecastBundle],
         obs_cache: dict[tuple[float, float, str, str], ObservationSnapshot | None],
@@ -271,13 +275,26 @@ class ScannerService:
         bundle = weather_cache[weather_key]
         obs_key = (round(location.latitude, 4), round(location.longitude, 4), market.target_date.isoformat(), market.unit)
         if obs_key not in obs_cache:
-            observation = await openmeteo.fetch_observation(location, market.target_date, market.unit)
-            try:
-                noaa_obs = await noaa.fetch_observation(location, market.target_date, market.unit)
-                if noaa_obs is not None:
-                    observation = noaa_obs
-            except Exception as exc:  # noqa: BLE001
-                logger.info("NOAA unavailable for %s: %s", market.city, exc)
+            observation = None
+            is_kalshi_twc_market = market.market_id.startswith("KALSHI:") and "Weather Company" in market.resolution_rules
+            if is_kalshi_twc_market:
+                try:
+                    observation = await twc.fetch_observation(
+                        market.resolution_station,
+                        market.city,
+                        market.target_date,
+                        market.unit,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.info("Weather Company unavailable for %s: %s", market.city, exc)
+            if observation is None:
+                observation = await openmeteo.fetch_observation(location, market.target_date, market.unit)
+                try:
+                    noaa_obs = await noaa.fetch_observation(location, market.target_date, market.unit)
+                    if noaa_obs is not None and not is_kalshi_twc_market:
+                        observation = noaa_obs
+                except Exception as exc:  # noqa: BLE001
+                    logger.info("NOAA unavailable for %s: %s", market.city, exc)
             obs_cache[obs_key] = observation
         observation = obs_cache[obs_key]
 
@@ -401,6 +418,22 @@ class ScannerService:
         except Exception as exc:  # noqa: BLE001
             with session_scope() as session:
                 self._save_no_trade(session, session_id, market, outcome, "PROBABILITY_ENGINE_ERROR", str(exc), str(exc))
+            return False
+
+        source_guard = self._official_source_guard(market, outcome, observation)
+        if source_guard is not None:
+            reason_code, reason_es, reason_en = source_guard
+            with session_scope() as session:
+                self._save_no_trade(
+                    session,
+                    session_id,
+                    market,
+                    outcome,
+                    reason_code,
+                    reason_es,
+                    reason_en,
+                    probability=probability,
+                )
             return False
 
         tentative_stake = min(runtime.max_position_usd, runtime.active_bankroll * runtime.max_position_percent / 100.0)
@@ -811,6 +844,55 @@ class ScannerService:
         session.add(signal)
         session.flush()
         return signal
+
+    def _official_source_guard(
+        self,
+        market: ParsedWeatherMarket,
+        outcome: ParsedOutcome,
+        observation: ObservationSnapshot | None,
+    ) -> tuple[str, str, str] | None:
+        if not self.app_settings.kalshi_require_official_weather_source:
+            return None
+        if not market.market_id.startswith("KALSHI:") or "Weather Company" not in market.resolution_rules:
+            return None
+        if observation is None or observation.provider != "the-weather-company-kalshi":
+            return (
+                "OFFICIAL_SOURCE_UNAVAILABLE",
+                "La fuente oficial de Kalshi/The Weather Company no está disponible. Señal bloqueada.",
+                "Kalshi/The Weather Company official source is unavailable. Signal blocked.",
+            )
+        raw = observation.raw if isinstance(observation.raw, dict) else {}
+        if raw.get("source") == "hourly_metar" and not raw.get("local_day_complete"):
+            return (
+                "OFFICIAL_DAY_INCOMPLETE",
+                "La fuente oficial todavía no tiene el día completo confirmado. Señal bloqueada.",
+                "The official source does not have the complete day confirmed yet. Signal blocked.",
+            )
+        reference = observation.observed_max if market.weather_metric == "daily_max" else observation.observed_min
+        boundaries = [value for value in (outcome.lower_bound, outcome.upper_bound) if value is not None]
+        if reference is None or not boundaries:
+            return (
+                "OFFICIAL_OBSERVATION_INCOMPLETE",
+                "La fuente oficial no trae una máxima/mínima usable para este outcome. Señal bloqueada.",
+                "The official source does not provide a usable max/min observation for this outcome. Signal blocked.",
+            )
+        min_distance = min(abs(reference - boundary) for boundary in boundaries)
+        min_margin = self.app_settings.kalshi_min_source_margin_f
+        if market.unit.upper() == "C":
+            min_margin = min_margin * 5.0 / 9.0
+        if min_distance < min_margin:
+            return (
+                "SOURCE_MARGIN_TOO_THIN",
+                (
+                    f"Lectura oficial/preliminar {reference:.1f}{market.unit} a solo "
+                    f"{min_distance:.1f}{market.unit} del strike. Señal bloqueada por margen mínimo."
+                ),
+                (
+                    f"Official/preliminary reading {reference:.1f}{market.unit} is only "
+                    f"{min_distance:.1f}{market.unit} from the strike. Signal blocked by minimum margin."
+                ),
+            )
+        return None
 
     def _reason(self, edge_code: str, liquidity: Any, risk: Any, runtime: RuntimeSettings) -> tuple[str, str, str]:
         if runtime.kill_switch:

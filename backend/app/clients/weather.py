@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -260,6 +260,201 @@ class NOAAProvider(WeatherProvider):
             fetched_at_utc=utc_now(),
             raw=observations if isinstance(observations, dict) else {"payload": observations},
         )
+
+
+class TheWeatherCompanyKalshiProvider(WeatherProvider):
+    provider_name = "the-weather-company-kalshi"
+
+    def __init__(self, settings: AppSettings) -> None:
+        self.settings = settings
+        self.client = RetryableHTTPClient(
+            base_url=settings.kalshi_weather_source_base_url,
+            timeout_seconds=settings.http_timeout_seconds,
+            headers={
+                "User-Agent": "WeatherEdgeflow/0.1 public-data-only",
+                "Accept": "application/json",
+            },
+        )
+
+    async def close(self) -> None:
+        await self.client.close()
+
+    async def health(self) -> dict[str, Any]:
+        try:
+            payload = await self.client.get("/api/climate/primary", params={"date": utc_now().date().isoformat()})
+            return {"ok": isinstance(payload, dict) and isinstance(payload.get("results"), list)}
+        except Exception as exc:  # noqa: BLE001
+            return {"ok": False, "error": str(exc)}
+
+    async def fetch_observation(
+        self,
+        station: str | None,
+        city: str,
+        metric_date: date,
+        unit: str,
+    ) -> ObservationSnapshot | None:
+        station_hint = normalize_twc_station(station, city)
+        daily_payload = await self.client.get("/api/climate/primary", params={"date": metric_date.isoformat()})
+        daily = extract_twc_daily_observation(daily_payload, station_hint, metric_date, unit)
+        if daily is not None:
+            return daily
+
+        week_start = metric_date - timedelta(days=metric_date.weekday())
+        hourly_payload = await self.client.get("/api/metar", params={"primary": "true", "weekStart": week_start.isoformat()})
+        return extract_twc_hourly_observation(hourly_payload, station_hint, metric_date, unit, daily_payload=daily_payload)
+
+
+def extract_twc_daily_observation(payload: Any, station_hint: str, metric_date: date, unit: str) -> ObservationSnapshot | None:
+    if not isinstance(payload, dict):
+        return None
+    for item in payload.get("results", []) if isinstance(payload.get("results"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        station = item.get("station") if isinstance(item.get("station"), dict) else {}
+        if not _twc_station_matches(station, station_hint):
+            continue
+        data = item.get("data") if isinstance(item.get("data"), dict) else None
+        status = str(item.get("status") or "no_report")
+        if not data or status not in {"official", "preliminary"}:
+            return None
+        max_temp = _float_or_none(data.get("maxTemp"))
+        min_temp = _float_or_none(data.get("minTemp"))
+        if unit.upper() == "C":
+            max_temp = _f_to_c(max_temp)
+            min_temp = _f_to_c(min_temp)
+        return ObservationSnapshot(
+            provider=TheWeatherCompanyKalshiProvider.provider_name,
+            station=str(station.get("icao") or station.get("cliId") or station_hint),
+            metric_date=metric_date,
+            observed_max=max_temp,
+            observed_min=min_temp,
+            current_temperature=max_temp if max_temp is not None else min_temp,
+            unit=unit.upper(),
+            observed_at_utc=utc_now(),
+            fetched_at_utc=utc_now(),
+            raw={"source": "daily_climate", "status": status, "station": station, "data": data, "payload_date": payload.get("date")},
+        )
+    return None
+
+
+def extract_twc_hourly_observation(
+    payload: Any,
+    station_hint: str,
+    metric_date: date,
+    unit: str,
+    *,
+    daily_payload: Any | None = None,
+) -> ObservationSnapshot | None:
+    if not isinstance(payload, dict):
+        return None
+    station_row = None
+    for item in payload.get("stations", []) if isinstance(payload.get("stations"), list) else []:
+        if isinstance(item, dict) and _twc_station_matches(item, station_hint):
+            station_row = item
+            break
+    if station_row is None:
+        return None
+
+    observations: list[dict[str, Any]] = []
+    by_date = station_row.get("observationsByDate")
+    if isinstance(by_date, dict) and isinstance(by_date.get(metric_date.isoformat()), list):
+        observations = [item for item in by_date[metric_date.isoformat()] if isinstance(item, dict)]
+    elif isinstance(station_row.get("observations"), list):
+        observations = [
+            item
+            for item in station_row["observations"]
+            if isinstance(item, dict) and str(item.get("localDate") or "") == metric_date.isoformat()
+        ]
+
+    temps_f = [_float_or_none(item.get("tempF")) for item in observations]
+    temps_f = [value for value in temps_f if value is not None]
+    if not temps_f:
+        return None
+    latest = observations[0] if observations else {}
+    latest_time = parse_datetime(str(latest.get("reportTimeUTC") or ""))
+    max_temp = max(temps_f)
+    min_temp = min(temps_f)
+    current = _float_or_none(latest.get("tempF"))
+    if unit.upper() == "C":
+        max_temp = _f_to_c(max_temp)
+        min_temp = _f_to_c(min_temp)
+        current = _f_to_c(current)
+    settled_hours = sum(1 for item in observations if str(item.get("status") or "").lower() == "settled")
+    pending_hours = sum(1 for item in observations if str(item.get("status") or "").lower() == "pending")
+    return ObservationSnapshot(
+        provider=TheWeatherCompanyKalshiProvider.provider_name,
+        station=str(station_row.get("icaoId") or station_hint),
+        metric_date=metric_date,
+        observed_max=max_temp,
+        observed_min=min_temp,
+        current_temperature=current,
+        unit=unit.upper(),
+        observed_at_utc=latest_time,
+        fetched_at_utc=utc_now(),
+        raw={
+            "source": "hourly_metar",
+            "status": "preliminary_hourly",
+            "station": {"icao": station_row.get("icaoId"), "name": station_row.get("stationName")},
+            "local_day_complete": len({item.get("localHour") for item in observations}) >= 24,
+            "settled_hours": settled_hours,
+            "pending_hours": pending_hours,
+            "daily_report_status": _daily_status(daily_payload, station_hint),
+            "observation_count": len(observations),
+            "max_temp_f": max(temps_f),
+            "min_temp_f": min(temps_f),
+        },
+    )
+
+
+def normalize_twc_station(station: str | None, city: str) -> str:
+    value = str(station or "").upper().strip()
+    if value.startswith("CLI") and len(value) > 3:
+        value = value[3:]
+    mapped = {
+        "NYC": "KNYC",
+        "CLINYC": "KNYC",
+        "NEW YORK CITY": "KNYC",
+        "CHICAGO": "KMDW",
+        "CHI": "KMDW",
+        "MIA": "KMIA",
+        "MIAMI": "KMIA",
+        "LAX": "KLAX",
+        "LOS ANGELES": "KLAX",
+        "DEN": "KDEN",
+        "DENVER": "KDEN",
+    }
+    if value in mapped:
+        return mapped[value]
+    if re_city := mapped.get(city.upper().strip()):
+        return re_city
+    return value or city.upper().strip()
+
+
+def _twc_station_matches(station: dict[str, Any], station_hint: str) -> bool:
+    candidates = {
+        str(station.get("icao") or "").upper(),
+        str(station.get("icaoId") or "").upper(),
+        str(station.get("cliId") or "").upper(),
+        str(station.get("id") or "").upper(),
+        str(station.get("city") or "").upper(),
+        str(station.get("stationName") or "").upper(),
+    }
+    normalized = normalize_twc_station(station_hint, station_hint).upper()
+    return normalized in candidates or normalized.replace("K", "", 1) in candidates
+
+
+def _daily_status(payload: Any, station_hint: str) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    for item in payload.get("results", []) if isinstance(payload.get("results"), list) else []:
+        station = item.get("station") if isinstance(item, dict) and isinstance(item.get("station"), dict) else {}
+        if _twc_station_matches(station, station_hint):
+            return str(item.get("status") or "")
+    return None
+
+
+def _f_to_c(value: float | None) -> float | None:
+    return None if value is None else (value - 32.0) * 5.0 / 9.0
 
 
 def _daily_value(payload: Any, metric: WeatherMetric, target_date: date) -> float | None:

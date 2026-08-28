@@ -61,3 +61,44 @@ KALSHI_ORDERBOOK = {
         "no_dollars": [["0.6400", "261.00"], ["0.6300", "175.00"]],
     }
 }
+
+
+TWC_DAILY_NYC_OFFICIAL = {
+    "date": "2026-08-27",
+    "results": [
+        {
+            "station": {
+                "id": "knyc",
+                "city": "New York City",
+                "country": "United States",
+                "icao": "KNYC",
+                "timezone": "America/New_York",
+                "cliId": "NYC",
+            },
+            "data": {"maxTemp": 77, "minTemp": 70},
+            "status": "official",
+        }
+    ],
+}
+
+
+TWC_HOURLY_NYC_THIN_MARGIN = {
+    "stations": [
+        {
+            "icaoId": "KNYC",
+            "stationName": "New York City",
+            "observationsByDate": {
+                "2026-08-27": [
+                    {
+                        "localDate": "2026-08-27",
+                        "localHour": hour,
+                        "tempF": 80.1 if hour == 16 else 72 + (hour % 8),
+                        "status": "settled",
+                        "reportTimeUTC": f"2026-08-27T{hour:02d}:51:00Z",
+                    }
+                    for hour in range(24)
+                ]
+            },
+        }
+    ]
+}

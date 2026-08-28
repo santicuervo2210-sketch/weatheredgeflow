@@ -28,6 +28,9 @@ class AppSettings(BaseSettings):
     polymarket_data_base_url: str = "https://data-api.polymarket.com"
     kalshi_base_url: str = "https://external-api.kalshi.com/trade-api/v2"
     kalshi_series_tickers: str = "KXHIGHNY,KXHIGHCHI,KXHIGHMIA,KXHIGHLAX,KXHIGHDEN"
+    kalshi_weather_source_base_url: str = "https://weather.com/kalshi"
+    kalshi_require_official_weather_source: bool = True
+    kalshi_min_source_margin_f: float = 2.0
     openmeteo_forecast_base_url: str = "https://api.open-meteo.com/v1"
     openmeteo_geocoding_base_url: str = "https://geocoding-api.open-meteo.com/v1"
     noaa_base_url: str = "https://api.weather.gov"

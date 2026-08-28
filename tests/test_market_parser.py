@@ -3,11 +3,23 @@ from __future__ import annotations
 from datetime import date
 
 from app.clients.kalshi import _orderbook_from_payload
+from app.clients.weather import extract_twc_daily_observation, extract_twc_hourly_observation, normalize_twc_station
+from app.config import AppSettings
 from app.domain.edge import calculate_taker_fee
 from app.domain.kalshi_parser import KalshiWeatherMarketParser
 from app.domain.market_parser import WeatherMarketParser
 from app.domain.types import FeeSchedule, ParseFailure, ParsedWeatherMarket
-from tests.fixtures.sample_markets import BUENOS_AIRES_MULTI, KALSHI_NYC_HIGH_LESS, KALSHI_ORDERBOOK, NYC_BINARY, UNSUPPORTED_RAIN
+from app.services.scanner import ScannerService
+from app.services.settings_service import SettingsService
+from tests.fixtures.sample_markets import (
+    BUENOS_AIRES_MULTI,
+    KALSHI_NYC_HIGH_LESS,
+    KALSHI_ORDERBOOK,
+    NYC_BINARY,
+    TWC_DAILY_NYC_OFFICIAL,
+    TWC_HOURLY_NYC_THIN_MARGIN,
+    UNSUPPORTED_RAIN,
+)
 
 
 def test_parser_extracts_supported_multi_outcome_market() -> None:
@@ -63,6 +75,15 @@ def test_kalshi_parser_supports_weather_company_threshold_market() -> None:
     assert parsed.outcomes[0].side == "YES"
     assert parsed.outcomes[0].upper_bound == 80
     assert parsed.outcomes[1].side == "NO"
+    assert "above" in parsed.outcomes[1].label
+
+
+def test_kalshi_parser_derives_no_label_when_api_duplicates_yes_subtitle() -> None:
+    market = dict(KALSHI_NYC_HIGH_LESS)
+    market["no_sub_title"] = market["yes_sub_title"]
+    parsed = KalshiWeatherMarketParser().parse(market)
+    assert isinstance(parsed, ParsedWeatherMarket)
+    assert parsed.outcomes[1].label == "80F or above"
 
 
 def test_kalshi_orderbook_normalizes_yes_and_no_asks() -> None:
@@ -89,3 +110,31 @@ def test_kalshi_fee_rounds_up_to_next_cent() -> None:
     tiny_fee = calculate_taker_fee(1, 0.01, FeeSchedule(True, 0.07, 1, True, 0.0, "kalshi", "ceil_cent"))
     assert fee == 1.75
     assert tiny_fee == 0.01
+
+
+def test_twc_daily_extracts_official_nyc_report() -> None:
+    observation = extract_twc_daily_observation(TWC_DAILY_NYC_OFFICIAL, "CLINYC", date(2026, 8, 27), "F")
+    assert observation is not None
+    assert observation.provider == "the-weather-company-kalshi"
+    assert observation.station == "KNYC"
+    assert observation.observed_max == 77
+    assert observation.raw["status"] == "official"
+
+
+def test_twc_hourly_observation_normalizes_clinyc_station() -> None:
+    observation = extract_twc_hourly_observation(TWC_HOURLY_NYC_THIN_MARGIN, "CLINYC", date(2026, 8, 27), "F")
+    assert observation is not None
+    assert normalize_twc_station("CLINYC", "New York City") == "KNYC"
+    assert observation.observed_max == 80.1
+    assert observation.raw["local_day_complete"] is True
+
+
+def test_kalshi_twc_guard_blocks_thin_margin_near_strike() -> None:
+    market = KalshiWeatherMarketParser().parse(KALSHI_NYC_HIGH_LESS)
+    assert isinstance(market, ParsedWeatherMarket)
+    observation = extract_twc_hourly_observation(TWC_HOURLY_NYC_THIN_MARGIN, "CLINYC", date(2026, 8, 27), "F")
+    assert observation is not None
+    scanner = ScannerService(AppSettings(), SettingsService(AppSettings()))
+    guard = scanner._official_source_guard(market, market.outcomes[1], observation)
+    assert guard is not None
+    assert guard[0] == "SOURCE_MARGIN_TOO_THIN"
