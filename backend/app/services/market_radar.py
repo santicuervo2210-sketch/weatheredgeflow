@@ -89,11 +89,27 @@ class MarketRadarService:
 
     def _weather_candidates(self, session: Session, runtime: RuntimeSettings, *, limit: int) -> list[RadarCandidate]:
         signals = session.query(Signal).order_by(Signal.created_at_utc.desc()).limit(limit).all()
-        return [self._from_weather(signal, runtime) for signal in signals]
+        latest: list[Signal] = []
+        seen: set[tuple[str, str | None]] = set()
+        for signal in signals:
+            key = (signal.market_id, signal.token_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            latest.append(signal)
+        return [self._from_weather(signal, runtime) for signal in latest]
 
     def _crypto_candidates(self, session: Session, runtime: RuntimeSettings, *, limit: int) -> list[RadarCandidate]:
         signals = session.query(CryptoSignal).order_by(CryptoSignal.timestamp_utc.desc()).limit(limit).all()
-        return [self._from_crypto(signal, runtime) for signal in signals]
+        latest: list[CryptoSignal] = []
+        seen: set[tuple[str, str, str]] = set()
+        for signal in signals:
+            key = (signal.venue, signal.symbol, signal.strategy)
+            if key in seen:
+                continue
+            seen.add(key)
+            latest.append(signal)
+        return [self._from_crypto(signal, runtime) for signal in latest]
 
     def _from_weather(self, signal: Signal, runtime: RuntimeSettings) -> RadarCandidate:
         edge = signal.net_edge

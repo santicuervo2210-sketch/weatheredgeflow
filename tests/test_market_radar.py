@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -133,3 +133,58 @@ def test_market_radar_fails_closed_with_watchlist_only() -> None:
     assert radar["best"] is None
     assert radar["best_watchlist"]["instrument"] == "BTCUSDT"
     assert radar["summary_es"].startswith("Radar multi-mercado: NO TRADE")
+
+
+def test_market_radar_uses_latest_crypto_signal_for_same_strategy() -> None:
+    session = _session()
+    old_time = datetime.now(tz=UTC) - timedelta(minutes=10)
+    new_time = datetime.now(tz=UTC)
+    session.add(
+        CryptoSignal(
+            timestamp_utc=old_time,
+            snapshot_id=None,
+            venue="KALSHI",
+            symbol="XRPUSDT",
+            strategy="KALSHI_CRYPTO_PRICE",
+            action="BUY_NO",
+            status="OPPORTUNITY",
+            reason_code="CRYPTO_EDGE_OK",
+            reason_es="Edge confirmado.",
+            reason_en="Edge confirmed.",
+            model_probability=0.42,
+            market_probability=0.20,
+            raw_edge=0.38,
+            net_daily_edge=0.27,
+            confidence=47.0,
+            recommended_notional=0.0,
+            raw_json="{}",
+        )
+    )
+    session.add(
+        CryptoSignal(
+            timestamp_utc=new_time,
+            snapshot_id=None,
+            venue="KALSHI",
+            symbol="XRPUSDT",
+            strategy="KALSHI_CRYPTO_PRICE",
+            action="NO_TRADE",
+            status="REJECTED",
+            reason_code="EDGE_BELOW_THRESHOLD",
+            reason_es="Edge insuficiente.",
+            reason_en="Edge below threshold.",
+            model_probability=0.48,
+            market_probability=0.45,
+            raw_edge=0.07,
+            net_daily_edge=-0.04,
+            confidence=48.0,
+            recommended_notional=0.0,
+            raw_json="{}",
+        )
+    )
+    session.commit()
+
+    radar = MarketRadarService().build(session, _runtime())
+
+    assert radar["status"] == "NO_TRADE"
+    assert radar["best"] is None
+    assert radar["items"][0]["status"] == "REJECTED"
