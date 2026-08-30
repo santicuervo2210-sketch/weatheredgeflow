@@ -7,10 +7,12 @@ from typing import Any
 from app.clients.binance_public import BinancePublicClient, BinanceMarketSnapshot
 from app.clients.kalshi import KalshiClient
 from app.config import AppSettings
-from app.db.models import CryptoSignal, CryptoSnapshot
+from app.db.models import CryptoSignal, CryptoSnapshot, PaperPosition
 from app.db.session import session_scope
 from app.domain.crypto_barrier import KalshiCryptoMarket, CryptoBarrierEngine, parse_kalshi_crypto_market
 from app.domain.crypto_carry import CryptoCarryEngine, CryptoCarryLimits
+from app.domain.risk import RiskLimits, RiskManager
+from app.domain.types import RiskDecision
 from app.services.events import log_event
 from app.services.notifications import NotificationService
 from app.services.settings_service import SettingsService
@@ -26,6 +28,7 @@ class CryptoScannerService:
         self.settings_service = settings_service
         self.engine = CryptoCarryEngine()
         self.barrier_engine = CryptoBarrierEngine()
+        self.risk = RiskManager()
         self.notifications = NotificationService(app_settings)
 
     async def run_once(self) -> dict[str, Any]:
@@ -91,7 +94,7 @@ class CryptoScannerService:
 
     async def _scan_kalshi_btc_barriers(self, client: BinancePublicClient, kalshi: KalshiClient) -> dict[str, int]:
         series = [item.strip().upper() for item in self.app_settings.kalshi_crypto_series_tickers.split(",") if item.strip()]
-        raw_markets = await kalshi.get_markets_by_series(series, limit_per_series=20)
+        raw_markets = await kalshi.get_markets_by_series(series, limit_per_series=100)
         markets = [market for market in (parse_kalshi_crypto_market(raw) for raw in raw_markets) if market is not None]
         symbols = sorted({market.symbol for market in markets})
         spot_prices: dict[str, float] = {}
@@ -206,17 +209,29 @@ class CryptoScannerService:
         )
         with session_scope() as session:
             runtime = self.settings_service.get_runtime(session)
+            risk = self._risk_decision(session, runtime, decision)
+            status = decision.status
+            action = decision.action
+            reason_code = decision.reason_code
+            reason_es = decision.reason_es
+            reason_en = decision.reason_en
+            if decision.status == "OPPORTUNITY" and not risk.approved:
+                status = "REJECTED"
+                action = "NO_TRADE"
+                reason_code = f"RISK_{risk.reason_code}"
+                reason_es = risk.reason_es
+                reason_en = risk.reason_en
             signal = CryptoSignal(
                 timestamp_utc=utc_now(),
                 snapshot_id=None,
                 venue="KALSHI",
                 symbol=decision.symbol,
                 strategy=self.barrier_engine.strategy,
-                action=decision.action,
-                status=decision.status,
-                reason_code=decision.reason_code,
-                reason_es=decision.reason_es,
-                reason_en=decision.reason_en,
+                action=action,
+                status=status,
+                reason_code=reason_code,
+                reason_es=reason_es,
+                reason_en=reason_en,
                 funding_rate=None,
                 model_probability=decision.model_probability,
                 market_probability=decision.market_probability,
@@ -227,9 +242,9 @@ class CryptoScannerService:
                 basis_risk=None,
                 net_daily_edge=decision.net_edge,
                 confidence=decision.confidence,
-                recommended_notional=0.0,
-                max_notional=0.0,
-                raw_json=json.dumps({"market": market.raw, "decision": decision.__dict__}, default=str),
+                recommended_notional=risk.recommended_stake,
+                max_notional=risk.maximum_allowed_stake,
+                raw_json=json.dumps({"market": market.raw, "decision": decision.__dict__, "risk": risk.__dict__}, default=str),
             )
             session.add(signal)
             session.flush()
@@ -241,4 +256,38 @@ class CryptoScannerService:
                 category="CRYPTO",
                 details={"model_probability": decision.model_probability, "market_probability": decision.market_probability},
             )
-            return decision.status == "OPPORTUNITY"
+            return status == "OPPORTUNITY"
+
+    def _risk_decision(self, session, runtime, decision) -> RiskDecision:
+        if decision.status != "OPPORTUNITY":
+            return RiskDecision(False, 0.0, 0.0, "NO_SIGNAL", "Sin señal aprobada.", "No approved signal.", {})
+        if runtime.mode == "OBSERVE":
+            return RiskDecision(False, 0.0, 0.0, "OBSERVE_MODE", "Modo observación: no se recomienda stake.", "Observe mode: no stake recommended.", {})
+        if runtime.paused:
+            return RiskDecision(False, 0.0, 0.0, "PAUSED", "Bot pausado: no se recomiendan nuevas entradas.", "Bot is paused: no new entries recommended.", {})
+        if runtime.kill_switch:
+            return RiskDecision(False, 0.0, 0.0, "KILL_SWITCH", "Kill switch activo: señales accionables deshabilitadas.", "Kill switch enabled: actionable signals disabled.", {})
+        open_exposure = float(
+            sum(
+                value or 0.0
+                for (value,) in session.query(PaperPosition.stake_usd).filter(PaperPosition.status == "OPEN").all()
+            )
+        )
+        return self.risk.assess(
+            limits=RiskLimits(
+                bankroll=runtime.active_bankroll,
+                max_position_percent=runtime.max_position_percent,
+                max_position_usd=runtime.max_position_usd,
+                max_total_exposure_percent=runtime.max_total_exposure_percent,
+                max_daily_loss_percent=runtime.max_daily_loss_percent,
+                max_drawdown_percent=runtime.max_drawdown_percent,
+                min_confidence=runtime.min_confidence,
+            ),
+            requested_stake=runtime.max_position_usd,
+            open_exposure=open_exposure,
+            grouped_event_exposure=open_exposure,
+            daily_pnl=0.0,
+            drawdown_percent=0.0,
+            net_edge=float(decision.net_edge or 0.0),
+            confidence=decision.confidence,
+        )

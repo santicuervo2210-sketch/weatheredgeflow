@@ -280,8 +280,14 @@ def _symbol_from_title(title: str) -> str | None:
         return "BCHUSDT"
     if "bitcoin" in lowered:
         return "BTCUSDT"
+    if "ethereum" in lowered or "eth price" in lowered:
+        return "ETHUSDT"
+    if "solana" in lowered or "sol price" in lowered:
+        return "SOLUSDT"
     if "xrp" in lowered:
         return "XRPUSDT"
+    if "dogecoin" in lowered or "doge price" in lowered:
+        return "DOGEUSDT"
     if "litecoin" in lowered:
         return "LTCUSDT"
     return None

@@ -32,10 +32,7 @@ class RadarCandidate:
     url: str | None
     timestamp_utc: str | None
     score: float
-
-    @property
-    def actionable(self) -> bool:
-        return self.status == "OPPORTUNITY"
+    actionable: bool
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -114,6 +111,7 @@ class MarketRadarService:
     def _from_weather(self, signal: Signal, runtime: RuntimeSettings) -> RadarCandidate:
         edge = signal.net_edge
         score = self._score(edge=edge, confidence=signal.confidence, status=signal.status, min_confidence=runtime.min_confidence)
+        size = signal.recommended_stake
         return RadarCandidate(
             source="weather",
             venue="KALSHI" if str(signal.market_id).startswith("KALSHI:") else "POLYMARKET",
@@ -131,15 +129,17 @@ class MarketRadarService:
             raw_edge=signal.raw_edge,
             net_edge=edge,
             confidence=signal.confidence,
-            recommended_size=signal.recommended_stake,
+            recommended_size=size,
             url=signal.polymarket_url,
             timestamp_utc=iso_utc(signal.created_at_utc),
             score=score,
+            actionable=self._is_actionable(signal.status, signal.action, size, signal.confidence, runtime),
         )
 
     def _from_crypto(self, signal: CryptoSignal, runtime: RuntimeSettings) -> RadarCandidate:
         edge = signal.net_daily_edge if signal.net_daily_edge is not None else signal.raw_edge
         score = self._score(edge=edge, confidence=signal.confidence, status=signal.status, min_confidence=runtime.min_confidence)
+        size = signal.recommended_notional
         return RadarCandidate(
             source="crypto",
             venue=signal.venue,
@@ -157,10 +157,19 @@ class MarketRadarService:
             raw_edge=signal.raw_edge,
             net_edge=edge,
             confidence=signal.confidence,
-            recommended_size=signal.recommended_notional,
+            recommended_size=size,
             url=self._crypto_url(signal),
             timestamp_utc=iso_utc(signal.timestamp_utc),
             score=score,
+            actionable=self._is_actionable(signal.status, signal.action, size, signal.confidence, runtime),
+        )
+
+    def _is_actionable(self, status: str, action: str, size: float | None, confidence: float | None, runtime: RuntimeSettings) -> bool:
+        return (
+            status == "OPPORTUNITY"
+            and action != "NO_TRADE"
+            and float(size or 0.0) > 0.0
+            and float(confidence or 0.0) >= runtime.min_confidence
         )
 
     def _score(self, *, edge: float | None, confidence: float | None, status: str, min_confidence: float) -> float:

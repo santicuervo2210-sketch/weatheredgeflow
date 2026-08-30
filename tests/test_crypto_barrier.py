@@ -100,6 +100,33 @@ def test_parse_kalshi_xrp_short_direction_market() -> None:
     assert parsed.start_time_utc is not None
 
 
+@pytest.mark.parametrize(
+    ("title", "symbol"),
+    [
+        ("ETH price up in next 15 mins?", "ETHUSDT"),
+        ("SOL price up in next 15 mins?", "SOLUSDT"),
+        ("DOGE price up in next 15 mins?", "DOGEUSDT"),
+        ("Will Ethereum reach above $6000.00 by Jan 1, 2027 at 12:00AM ET?", "ETHUSDT"),
+    ],
+)
+def test_parse_supported_kalshi_crypto_symbols(title: str, symbol: str) -> None:
+    parsed = parse_kalshi_crypto_market(
+        {
+            "ticker": f"KX{symbol}-26AUG281300-00",
+            "event_ticker": f"KX{symbol}-26AUG281300",
+            "title": title,
+            "close_time": (datetime.now(tz=UTC) + timedelta(minutes=10)).isoformat(),
+            "yes_bid_dollars": "0.48",
+            "yes_ask_dollars": "0.50",
+            "no_bid_dollars": "0.49",
+            "no_ask_dollars": "0.51",
+        }
+    )
+
+    assert parsed is not None
+    assert parsed.symbol == symbol
+
+
 def test_parse_klines_rejects_malformed_or_short_payload() -> None:
     with pytest.raises(ValueError):
         parse_klines({"not": "a list"})

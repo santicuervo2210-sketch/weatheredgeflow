@@ -14,6 +14,7 @@ SERIES_INFO: dict[str, dict[str, str]] = {
     "KXHIGHMIA": {"city": "Miami", "country": "US", "timezone": "America/New_York"},
     "KXHIGHLAX": {"city": "Los Angeles", "country": "US", "timezone": "America/Los_Angeles"},
     "KXHIGHDEN": {"city": "Denver", "country": "US", "timezone": "America/Denver"},
+    "KXHIGHAUS": {"city": "Austin", "country": "US", "timezone": "America/Chicago"},
 }
 
 

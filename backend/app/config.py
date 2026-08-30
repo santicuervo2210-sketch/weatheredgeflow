@@ -27,14 +27,14 @@ class AppSettings(BaseSettings):
     polymarket_clob_base_url: str = "https://clob.polymarket.com"
     polymarket_data_base_url: str = "https://data-api.polymarket.com"
     kalshi_base_url: str = "https://external-api.kalshi.com/trade-api/v2"
-    kalshi_series_tickers: str = "KXHIGHNY,KXHIGHCHI,KXHIGHMIA,KXHIGHLAX,KXHIGHDEN"
+    kalshi_series_tickers: str = "KXHIGHNY,KXHIGHCHI,KXHIGHMIA,KXHIGHLAX,KXHIGHDEN,KXHIGHAUS"
     kalshi_weather_source_base_url: str = "https://weather.com/kalshi"
     kalshi_require_official_weather_source: bool = True
     kalshi_min_source_margin_f: float = 2.0
     binance_spot_base_url: str = "https://api.binance.com"
     binance_futures_base_url: str = "https://fapi.binance.com"
-    crypto_symbols: str = "BTCUSDT,ETHUSDT,SOLUSDT"
-    kalshi_crypto_series_tickers: str = "KXBTCMAXY,KXBTCMINY,KXXRP15M"
+    crypto_symbols: str = "BTCUSDT,ETHUSDT,SOLUSDT,XRPUSDT,DOGEUSDT,BNBUSDT,ADAUSDT,LINKUSDT,AVAXUSDT,LTCUSDT,BCHUSDT"
+    kalshi_crypto_series_tickers: str = "KXBTCMAXY,KXBTCMINY,KXETHMAXY,KXETHMINY,KXXRP15M,KXETH15M,KXSOL15M,KXDOGE15M"
     crypto_min_net_daily_edge: float = 0.001
     crypto_max_spread: float = 0.001
     crypto_max_basis_risk: float = 0.005

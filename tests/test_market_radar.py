@@ -188,3 +188,35 @@ def test_market_radar_uses_latest_crypto_signal_for_same_strategy() -> None:
     assert radar["status"] == "NO_TRADE"
     assert radar["best"] is None
     assert radar["items"][0]["status"] == "REJECTED"
+
+
+def test_market_radar_does_not_make_zero_size_signal_actionable() -> None:
+    session = _session()
+    session.add(
+        CryptoSignal(
+            timestamp_utc=datetime.now(tz=UTC),
+            snapshot_id=None,
+            venue="KALSHI",
+            symbol="XRPUSDT",
+            strategy="KALSHI_CRYPTO_PRICE",
+            action="BUY_NO",
+            status="OPPORTUNITY",
+            reason_code="CRYPTO_EDGE_OK",
+            reason_es="Edge confirmado.",
+            reason_en="Edge confirmed.",
+            model_probability=0.42,
+            market_probability=0.20,
+            raw_edge=0.38,
+            net_daily_edge=0.27,
+            confidence=70.0,
+            recommended_notional=0.0,
+            raw_json="{}",
+        )
+    )
+    session.commit()
+
+    radar = MarketRadarService().build(session, _runtime())
+
+    assert radar["status"] == "NO_TRADE"
+    assert radar["best"] is None
+    assert radar["items"][0]["actionable"] is False
