@@ -83,3 +83,17 @@ class AlgoDecisionRequest(BaseModel):
     indicators: AlgoIndicators
     account: AlgoAccountState
     risk: AlgoRiskParameters
+
+
+class OrderExecutionAgentRequestBody(BaseModel):
+    execution_mode: Literal["PAPER", "SANDBOX", "LIVE_CASH"] = "PAPER"
+    venue: str
+    symbol: str
+    accion: Literal["comprar", "vender", "mantener", "cerrar_posicion"]
+    confianza: int
+    tamano_posicion: float | str
+    stop_loss: float | str
+    take_profit: float | str
+    current_price: float
+    max_order_usd: float
+    idempotency_key: str

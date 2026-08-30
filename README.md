@@ -162,6 +162,34 @@ El endpoint `POST /api/algo/decision` permite conectar un programa externo que y
 
 Este motor no descarga datos y no ejecuta órdenes. Si los datos son insuficientes, si hay drawdown diario, cooldown, alta volatilidad o señales contradictorias, responde `mantener`.
 
+### Agente autónomo de ejecución
+
+El endpoint `POST /api/execution/agent` recibe la decisión del motor algorítmico y la transforma en una ejecución auditada. Modos soportados:
+
+- `PAPER`: registra una orden simulada.
+- `SANDBOX`: prepara una orden de prueba sin dinero real.
+- `LIVE_CASH`: queda bloqueado por diseño con `LIVE_CASH_DISABLED`.
+
+El agente exige confidence mínima, tamaño dentro de límite, precio válido, stop-loss y take-profit para abrir posiciones. Todas las decisiones quedan registradas en `live_execution_audits` con `idempotency_key` para evitar duplicados.
+
+Ejemplo seguro:
+
+```json
+{
+  "execution_mode": "PAPER",
+  "venue": "BINANCE",
+  "symbol": "BTCUSDT",
+  "accion": "comprar",
+  "confianza": 85,
+  "tamano_posicion": 2.0,
+  "stop_loss": 104.94,
+  "take_profit": 108.12,
+  "current_price": 106.0,
+  "max_order_usd": 2.0,
+  "idempotency_key": "orden-unica-001"
+}
+```
+
 ## PAPER MODE
 
 `PAPER` usa bankroll virtual independiente. El bot crea órdenes simuladas sólo si:

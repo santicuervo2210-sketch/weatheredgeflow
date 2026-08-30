@@ -7,7 +7,15 @@ from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from app.api.schemas import AlgoDecisionRequest, ControlUpdate, LiveExecutionPreflightRequest, ModeUpdate, ScanResponse, SettingsUpdate
+from app.api.schemas import (
+    AlgoDecisionRequest,
+    ControlUpdate,
+    LiveExecutionPreflightRequest,
+    ModeUpdate,
+    OrderExecutionAgentRequestBody,
+    ScanResponse,
+    SettingsUpdate,
+)
 from app.clients.binance_public import BinancePublicClient
 from app.clients.kalshi import KalshiClient
 from app.clients.polymarket import PolymarketClient
@@ -36,6 +44,7 @@ from app.services.crypto_scanner import CryptoScannerService
 from app.services.events import log_event
 from app.services.live_execution import LiveExecutionRequest, LiveExecutionService
 from app.services.market_radar import MarketRadarService
+from app.services.order_execution_agent import AutonomousOrderExecutionAgent, OrderExecutionAgentRequest
 from app.services.portfolio import PortfolioService
 from app.services.settings_service import SettingsService
 from app.utils.time import iso_utc
@@ -223,6 +232,36 @@ async def algo_decision(payload: AlgoDecisionRequest) -> dict[str, Any]:
         )
     )
     return decision.as_dict()
+
+
+@router.post("/execution/agent")
+async def order_execution_agent(payload: OrderExecutionAgentRequestBody) -> dict[str, Any]:
+    with session_scope() as session:
+        result = AutonomousOrderExecutionAgent().run(
+            session,
+            OrderExecutionAgentRequest(
+                execution_mode=payload.execution_mode,
+                venue=payload.venue,
+                symbol=payload.symbol,
+                accion=payload.accion,
+                confianza=payload.confianza,
+                tamano_posicion=payload.tamano_posicion,
+                stop_loss=payload.stop_loss,
+                take_profit=payload.take_profit,
+                current_price=payload.current_price,
+                max_order_usd=payload.max_order_usd,
+                idempotency_key=payload.idempotency_key,
+            ),
+        )
+        log_event(
+            session,
+            message_es=f"OrderExecutionAgent: {result.status} ({result.reason_code})",
+            message_en=f"OrderExecutionAgent: {result.status} ({result.reason_code})",
+            category="ORDER_EXECUTION_AGENT",
+            level="WARNING" if result.status == "BLOCKED" else "INFO",
+            details=result.as_dict(),
+        )
+        return result.as_dict()
 
 
 @router.get("/activity")
