@@ -15,6 +15,10 @@ data/*.log
 logs/*.log
 reports/
 tmp-actions-artifact-*/
+external-bots/freqtrade/user_data/logs/
+external-bots/freqtrade/user_data/data/
+external-bots/freqtrade/user_data/backtest_results/
+external-bots/freqtrade/user_data/tradesv3.sqlite*
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/

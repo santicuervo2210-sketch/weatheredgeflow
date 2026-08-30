@@ -1,0 +1,83 @@
+{
+  "$schema": "https://schema.freqtrade.io/schema.json",
+  "bot_name": "weatheredgeflow-freqtrade-dryrun",
+  "initial_state": "running",
+  "dry_run": true,
+  "dry_run_wallet": 100,
+  "trading_mode": "spot",
+  "margin_mode": "",
+  "cancel_open_orders_on_exit": true,
+  "process_only_new_candles": true,
+  "internals": {
+    "process_throttle_secs": 5
+  },
+  "max_open_trades": 2,
+  "stake_currency": "USDT",
+  "stake_amount": 10,
+  "tradable_balance_ratio": 0.25,
+  "fiat_display_currency": "USD",
+  "timeframe": "5m",
+  "entry_pricing": {
+    "price_side": "same",
+    "use_order_book": true,
+    "order_book_top": 1,
+    "price_last_balance": 0.0,
+    "check_depth_of_market": {
+      "enabled": false,
+      "bids_to_ask_delta": 1
+    }
+  },
+  "exit_pricing": {
+    "price_side": "same",
+    "use_order_book": true,
+    "order_book_top": 1
+  },
+  "exchange": {
+    "name": "binance",
+    "key": "",
+    "secret": "",
+    "ccxt_config": {
+      "enableRateLimit": true
+    },
+    "ccxt_async_config": {
+      "enableRateLimit": true
+    },
+    "pair_whitelist": [
+      "BTC/USDT",
+      "ETH/USDT",
+      "SOL/USDT",
+      "BNB/USDT",
+      "XRP/USDT"
+    ],
+    "pair_blacklist": [
+      ".*UP/USDT",
+      ".*DOWN/USDT",
+      ".*BULL/USDT",
+      ".*BEAR/USDT"
+    ]
+  },
+  "pairlists": [
+    {
+      "method": "StaticPairList"
+    }
+  ],
+  "telegram": {
+    "enabled": false,
+    "token": "",
+    "chat_id": ""
+  },
+  "api_server": {
+    "enabled": true,
+    "listen_ip_address": "0.0.0.0",
+    "listen_port": 8080,
+    "verbosity": "error",
+    "enable_openapi": false,
+    "jwt_secret_key": "change-this-local-jwt-secret",
+    "CORS_origins": [
+      "http://127.0.0.1:8081",
+      "http://localhost:8081"
+    ],
+    "username": "weatheredge",
+    "password": "change-this-local-password"
+  }
+}

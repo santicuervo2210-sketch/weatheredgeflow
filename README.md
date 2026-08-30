@@ -190,6 +190,32 @@ Ejemplo seguro:
 }
 ```
 
+### Sidecar Freqtrade
+
+También queda incluido un bot open-source externo basado en Freqtrade, preparado sólo para `dry-run`/paper trading. Freqtrade es un bot crypto libre con Docker oficial, SQLite, backtesting, WebUI y soporte para exchanges como Binance, Bybit, OKX y Kraken. Su documentación recomienda empezar siempre en `dry-run` antes de arriesgar dinero real.
+
+Archivos:
+
+- `docker-compose.freqtrade.yml`
+- `external-bots/freqtrade/user_data/config.json`
+- `external-bots/freqtrade/user_data/strategies/WeatherEdgeflowGuardedStrategy.py`
+
+Ejecutar Freqtrade paper:
+
+```powershell
+docker compose -f docker-compose.freqtrade.yml pull
+docker compose -f docker-compose.freqtrade.yml up -d
+docker compose -f docker-compose.freqtrade.yml logs -f
+```
+
+FreqUI local:
+
+```text
+http://127.0.0.1:8081
+```
+
+Esta integración no tiene API keys y no puede operar dinero real con la configuración incluida.
+
 ## PAPER MODE
 
 `PAPER` usa bankroll virtual independiente. El bot crea órdenes simuladas sólo si:
