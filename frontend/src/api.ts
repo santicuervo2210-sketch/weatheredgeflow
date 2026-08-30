@@ -141,6 +141,7 @@ export type DashboardData = {
   crypto_signals: CryptoSignal[];
   positions: Array<Record<string, unknown>>;
   orders: Array<Record<string, unknown>>;
+  live_execution_audits: Array<Record<string, unknown>>;
   activity: Array<Record<string, unknown>>;
   bankroll_chart: Array<Record<string, unknown>>;
   analytics: Record<string, unknown>;
@@ -176,6 +177,19 @@ export async function updateControl(updates: { paused?: boolean; kill_switch?: b
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(updates)
+  });
+}
+
+export async function preflightLiveExecution(payload: {
+  source: "weather" | "crypto";
+  signal_id: number;
+  stop_loss_price?: number | null;
+  force?: boolean;
+}): Promise<Record<string, unknown>> {
+  return requestJson("/api/live/preflight", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
   });
 }
 

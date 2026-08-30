@@ -51,6 +51,13 @@ class AppSettings(BaseSettings):
     crypto_short_min_net_edge: float = 0.18
     crypto_short_safety_margin: float = 0.10
     crypto_short_max_spread: float = 0.08
+    live_execution_enabled: bool = False
+    live_execution_provider: str = "DISABLED"
+    live_execution_max_order_usd: float = 2.0
+    live_execution_stop_loss_required: bool = True
+    live_execution_min_confidence: float = 65.0
+    kalshi_api_key_id: str = ""
+    kalshi_private_key_path: str = ""
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""

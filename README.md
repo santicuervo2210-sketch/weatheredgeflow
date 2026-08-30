@@ -127,9 +127,22 @@ CRYPTO_BARRIER_SAFETY_MARGIN=0.08
 CRYPTO_SHORT_SCAN_INTERVAL_MINUTES=5
 CRYPTO_SHORT_MIN_NET_EDGE=0.18
 CRYPTO_SHORT_SAFETY_MARGIN=0.10
+LIVE_EXECUTION_ENABLED=false
+LIVE_EXECUTION_PROVIDER=DISABLED
+LIVE_EXECUTION_MAX_ORDER_USD=2.0
+LIVE_EXECUTION_STOP_LOSS_REQUIRED=true
+LIVE_EXECUTION_MIN_CONFIDENCE=65
+KALSHI_API_KEY_ID=
+KALSHI_PRIVATE_KEY_PATH=
 ```
 
-No se requieren credenciales privadas. No configures seed phrases ni private keys: la aplicación no las usa.
+No se requieren credenciales privadas para `PAPER` o `LIVE_SIGNAL`. No configures seed phrases. Si en el futuro usas ejecución real en un VPS propio, las credenciales deben ir sólo como variables de entorno del servidor, con permisos de trading y sin permisos de retiro.
+
+### Ejecución real automatizada
+
+WeatherEdgeflow incluye una capa de preflight para ejecución real, apagada por defecto. El endpoint `/api/live/preflight` valida modo, kill switch, confidence, tamaño, stop-loss y credenciales del servidor, y registra cada intento en `live_execution_audits`.
+
+La aplicación no intenta evadir límites, detección de bots ni términos de servicio. Si `LIVE_EXECUTION_ENABLED=false`, todo intento queda bloqueado como `LIVE_EXECUTION_DISABLED`.
 
 ## PAPER MODE
 

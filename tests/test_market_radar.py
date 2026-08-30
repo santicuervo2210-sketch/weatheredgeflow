@@ -35,6 +35,11 @@ def _runtime() -> RuntimeSettings:
         alert_min_net_edge=0.10,
         alert_min_model_probability=0.60,
         alert_min_profit_usd_per_1=0.40,
+        live_execution_enabled=False,
+        live_execution_provider="DISABLED",
+        live_execution_max_order_usd=2.0,
+        live_execution_stop_loss_required=True,
+        live_execution_min_confidence=65.0,
         paused=False,
         kill_switch=False,
     )

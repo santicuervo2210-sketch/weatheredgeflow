@@ -26,3 +26,9 @@ class ModeUpdate(BaseModel):
     mode: Literal["OBSERVE", "PAPER", "LIVE_SIGNAL"]
     confirmed: bool = Field(default=True)
 
+
+class LiveExecutionPreflightRequest(BaseModel):
+    source: Literal["weather", "crypto"]
+    signal_id: int
+    stop_loss_price: float | None = None
+    force: bool = False

@@ -622,7 +622,10 @@ function SettingsPage({ data, t, load }: { data: DashboardData; t: typeof copy.e
     ["alert_min_confidence", "Alert min confidence", "number"],
     ["alert_min_net_edge", "Alert min edge", "number"],
     ["alert_min_model_probability", "Alert min probability", "number"],
-    ["alert_min_profit_usd_per_1", "Alert min profit / $1", "number"]
+    ["alert_min_profit_usd_per_1", "Alert min profit / $1", "number"],
+    ["live_execution_provider", "Live execution provider", "select", ["DISABLED", "KALSHI"]],
+    ["live_execution_max_order_usd", "Live max order", "number"],
+    ["live_execution_min_confidence", "Live min confidence", "number"]
   ] as const;
   return (
     <div className="panel settings-panel">
@@ -634,6 +637,22 @@ function SettingsPage({ data, t, load }: { data: DashboardData; t: typeof copy.e
             type="checkbox"
             checked={Boolean(form.alert_email_enabled)}
             onChange={(e) => setForm({ ...form, alert_email_enabled: e.target.checked })}
+          />
+        </label>
+        <label className="checkbox-field">
+          <span>Live execution enabled</span>
+          <input
+            type="checkbox"
+            checked={Boolean(form.live_execution_enabled)}
+            onChange={(e) => setForm({ ...form, live_execution_enabled: e.target.checked })}
+          />
+        </label>
+        <label className="checkbox-field">
+          <span>Require stop-loss</span>
+          <input
+            type="checkbox"
+            checked={Boolean(form.live_execution_stop_loss_required)}
+            onChange={(e) => setForm({ ...form, live_execution_stop_loss_required: e.target.checked })}
           />
         </label>
         <label>

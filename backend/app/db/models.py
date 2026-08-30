@@ -226,6 +226,27 @@ class NotificationEvent(Base):
     sent_at_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class LiveExecutionAudit(Base):
+    __tablename__ = "live_execution_audits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+    source: Mapped[str] = mapped_column(String(32))
+    signal_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    venue: Mapped[str] = mapped_column(String(64))
+    instrument: Mapped[str] = mapped_column(String(128))
+    action: Mapped[str] = mapped_column(String(64))
+    order_type: Mapped[str] = mapped_column(String(32), default="LIMIT")
+    limit_price: Mapped[float | None] = mapped_column(Float)
+    stake_usd: Mapped[float | None] = mapped_column(Float)
+    stop_loss_price: Mapped[float | None] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(32), default="BLOCKED")
+    reason_code: Mapped[str] = mapped_column(String(128))
+    reason_es: Mapped[str] = mapped_column(Text)
+    reason_en: Mapped[str] = mapped_column(Text)
+    raw_json: Mapped[str] = mapped_column(Text)
+
+
 class PaperOrder(Base):
     __tablename__ = "paper_orders"
 

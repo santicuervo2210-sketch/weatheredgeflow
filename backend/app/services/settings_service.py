@@ -20,6 +20,10 @@ SENSITIVE_KEYS = {
     "max_total_exposure_percent",
     "max_daily_loss_percent",
     "max_drawdown_percent",
+    "live_execution_enabled",
+    "live_execution_max_order_usd",
+    "live_execution_stop_loss_required",
+    "live_execution_min_confidence",
 }
 
 
@@ -47,6 +51,11 @@ class RuntimeSettings:
     alert_min_net_edge: float
     alert_min_model_probability: float
     alert_min_profit_usd_per_1: float
+    live_execution_enabled: bool
+    live_execution_provider: str
+    live_execution_max_order_usd: float
+    live_execution_stop_loss_required: bool
+    live_execution_min_confidence: float
     paused: bool
     kill_switch: bool
 
@@ -83,6 +92,11 @@ class SettingsService:
             "alert_min_net_edge": self.app_settings.alert_min_net_edge,
             "alert_min_model_probability": self.app_settings.alert_min_model_probability,
             "alert_min_profit_usd_per_1": self.app_settings.alert_min_profit_usd_per_1,
+            "live_execution_enabled": self.app_settings.live_execution_enabled,
+            "live_execution_provider": self.app_settings.live_execution_provider,
+            "live_execution_max_order_usd": self.app_settings.live_execution_max_order_usd,
+            "live_execution_stop_loss_required": self.app_settings.live_execution_stop_loss_required,
+            "live_execution_min_confidence": self.app_settings.live_execution_min_confidence,
             "paused": False,
             "kill_switch": False,
         }
@@ -126,6 +140,11 @@ class SettingsService:
             alert_min_net_edge=float(values["alert_min_net_edge"]),
             alert_min_model_probability=float(values["alert_min_model_probability"]),
             alert_min_profit_usd_per_1=float(values["alert_min_profit_usd_per_1"]),
+            live_execution_enabled=bool(values["live_execution_enabled"]),
+            live_execution_provider=str(values["live_execution_provider"]).upper(),
+            live_execution_max_order_usd=float(values["live_execution_max_order_usd"]),
+            live_execution_stop_loss_required=bool(values["live_execution_stop_loss_required"]),
+            live_execution_min_confidence=float(values["live_execution_min_confidence"]),
             paused=bool(values["paused"]),
             kill_switch=bool(values["kill_switch"]),
         )

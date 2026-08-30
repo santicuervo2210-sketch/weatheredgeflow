@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from app.api.schemas import ControlUpdate, ModeUpdate, ScanResponse, SettingsUpdate
+from app.api.schemas import ControlUpdate, LiveExecutionPreflightRequest, ModeUpdate, ScanResponse, SettingsUpdate
 from app.clients.binance_public import BinancePublicClient
 from app.clients.kalshi import KalshiClient
 from app.clients.polymarket import PolymarketClient
@@ -16,6 +16,7 @@ from app.config import get_settings
 from app.db.models import (
     BankrollSnapshot,
     CryptoSignal,
+    LiveExecutionAudit,
     PaperOrder,
     PaperPosition,
     Scan,
@@ -25,6 +26,7 @@ from app.db.models import (
 from app.db.session import session_scope
 from app.services.crypto_scanner import CryptoScannerService
 from app.services.events import log_event
+from app.services.live_execution import LiveExecutionRequest, LiveExecutionService
 from app.services.market_radar import MarketRadarService
 from app.services.portfolio import PortfolioService
 from app.services.settings_service import SettingsService
@@ -52,6 +54,7 @@ async def dashboard(request: Request) -> dict[str, Any]:
         signals = session.query(Signal).order_by(Signal.created_at_utc.desc()).limit(100).all()
         positions = session.query(PaperPosition).order_by(PaperPosition.opened_at_utc.desc()).limit(100).all()
         orders = session.query(PaperOrder).order_by(PaperOrder.order_timestamp_utc.desc()).limit(100).all()
+        live_audits = session.query(LiveExecutionAudit).order_by(LiveExecutionAudit.created_at_utc.desc()).limit(100).all()
         crypto_signals = session.query(CryptoSignal).order_by(CryptoSignal.timestamp_utc.desc()).limit(100).all()
         events = session.query(SystemEvent).order_by(SystemEvent.timestamp_utc.desc()).limit(120).all()
         snapshots = session.query(BankrollSnapshot).order_by(BankrollSnapshot.timestamp_utc.asc()).limit(500).all()
@@ -67,6 +70,7 @@ async def dashboard(request: Request) -> dict[str, Any]:
             "signals": [signal_dict(s) for s in signals],
             "positions": [position_dict(p) for p in positions],
             "orders": [order_dict(o) for o in orders],
+            "live_execution_audits": [live_audit_dict(a) for a in live_audits],
             "crypto_signals": [crypto_signal_dict(s) for s in crypto_signals],
             "activity": [event_dict(e) for e in events],
             "bankroll_chart": [snapshot_dict(s) for s in snapshots],
@@ -168,6 +172,33 @@ async def run_crypto_scan(request: Request) -> dict[str, Any]:
     if scanner is None:
         scanner = CryptoScannerService(get_settings(), request.app.state.settings_service)
     return await scanner.run_once()
+
+
+@router.post("/live/preflight")
+async def live_execution_preflight(request: Request, payload: LiveExecutionPreflightRequest) -> dict[str, Any]:
+    settings_service: SettingsService = request.app.state.settings_service
+    executor = LiveExecutionService(get_settings())
+    with session_scope() as session:
+        runtime = settings_service.get_runtime(session)
+        result = executor.preflight(
+            session,
+            runtime,
+            LiveExecutionRequest(
+                source=payload.source,
+                signal_id=payload.signal_id,
+                stop_loss_price=payload.stop_loss_price,
+                force=payload.force,
+            ),
+        )
+        log_event(
+            session,
+            message_es=f"Live execution preflight: {result.status} ({result.reason_code})",
+            message_en=f"Live execution preflight: {result.status} ({result.reason_code})",
+            category="LIVE_EXECUTION",
+            level="WARNING" if result.status == "BLOCKED" else "INFO",
+            details=result.as_dict(),
+        )
+        return result.as_dict()
 
 
 @router.get("/activity")
@@ -385,6 +416,27 @@ def order_dict(order: PaperOrder) -> dict[str, Any]:
         "fees": order.fees,
         "status": order.status,
         "pnl": order.pnl,
+    }
+
+
+def live_audit_dict(audit: LiveExecutionAudit) -> dict[str, Any]:
+    return {
+        "id": audit.id,
+        "created_at_utc": iso_utc(audit.created_at_utc),
+        "source": audit.source,
+        "signal_id": audit.signal_id,
+        "venue": audit.venue,
+        "instrument": audit.instrument,
+        "action": audit.action,
+        "order_type": audit.order_type,
+        "limit_price": audit.limit_price,
+        "stake_usd": audit.stake_usd,
+        "stop_loss_price": audit.stop_loss_price,
+        "status": audit.status,
+        "reason_code": audit.reason_code,
+        "reason_es": audit.reason_es,
+        "reason_en": audit.reason_en,
+        "raw": loads(audit.raw_json, {}),
     }
 
 
