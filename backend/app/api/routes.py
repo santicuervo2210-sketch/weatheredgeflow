@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from app.api.schemas import ControlUpdate, LiveExecutionPreflightRequest, ModeUpdate, ScanResponse, SettingsUpdate
+from app.api.schemas import AlgoDecisionRequest, ControlUpdate, LiveExecutionPreflightRequest, ModeUpdate, ScanResponse, SettingsUpdate
 from app.clients.binance_public import BinancePublicClient
 from app.clients.kalshi import KalshiClient
 from app.clients.polymarket import PolymarketClient
@@ -24,6 +24,14 @@ from app.db.models import (
     SystemEvent,
 )
 from app.db.session import session_scope
+from app.domain.algo_decision import (
+    AccountState,
+    AlgoDecisionInput,
+    AlgoRiskParameters,
+    AutonomousTradingDecisionEngine,
+    Candle,
+    IndicatorSnapshot,
+)
 from app.services.crypto_scanner import CryptoScannerService
 from app.services.events import log_event
 from app.services.live_execution import LiveExecutionRequest, LiveExecutionService
@@ -199,6 +207,22 @@ async def live_execution_preflight(request: Request, payload: LiveExecutionPrefl
             details=result.as_dict(),
         )
         return result.as_dict()
+
+
+@router.post("/algo/decision")
+async def algo_decision(payload: AlgoDecisionRequest) -> dict[str, Any]:
+    decision = AutonomousTradingDecisionEngine().decide(
+        AlgoDecisionInput(
+            symbol=payload.symbol,
+            timeframe=payload.timeframe,
+            current_price=payload.current_price,
+            candles=[Candle(**item.model_dump()) for item in payload.candles],
+            indicators=IndicatorSnapshot(**payload.indicators.model_dump()),
+            account=AccountState(**payload.account.model_dump()),
+            risk=AlgoRiskParameters(**payload.risk.model_dump()),
+        )
+    )
+    return decision.as_dict()
 
 
 @router.get("/activity")

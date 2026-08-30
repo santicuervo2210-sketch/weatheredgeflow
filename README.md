@@ -144,6 +144,24 @@ WeatherEdgeflow incluye una capa de preflight para ejecución real, apagada por 
 
 La aplicación no intenta evadir límites, detección de bots ni términos de servicio. Si `LIVE_EXECUTION_ENABLED=false`, todo intento queda bloqueado como `LIVE_EXECUTION_DISABLED`.
 
+### Motor de decisión algorítmica
+
+El endpoint `POST /api/algo/decision` permite conectar un programa externo que ya tenga datos OHLCV, indicadores, estado de cuenta y reglas de riesgo. Devuelve únicamente una decisión JSON:
+
+```json
+{
+  "accion": "comprar",
+  "confianza": 85,
+  "tamano_posicion": 2.0,
+  "stop_loss": 104.94,
+  "take_profit": 108.12,
+  "razonamiento": "Precio 106.0000 > SMA rapida 104.0000 > SMA lenta 101.0000; EMA rapida 104.4000 supera EMA lenta 102.0000; RSI 58.0 en zona alcista sin sobrecompra extrema",
+  "alerta_riesgo": false
+}
+```
+
+Este motor no descarga datos y no ejecuta órdenes. Si los datos son insuficientes, si hay drawdown diario, cooldown, alta volatilidad o señales contradictorias, responde `mantener`.
+
 ## PAPER MODE
 
 `PAPER` usa bankroll virtual independiente. El bot crea órdenes simuladas sólo si:
